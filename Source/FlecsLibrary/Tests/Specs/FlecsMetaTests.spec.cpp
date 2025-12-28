@@ -1,9 +1,13 @@
-﻿#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
+﻿// Elie Wiese-Namir © 2025. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#include "Bake/FlecsTestUtils.h"
+
+#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
 
 #include "flecs.h"
 
-#include "Misc/AutomationTest.h"
-#include "Bake/FlecsTestUtils.h"
 #include "Bake/FlecsTestTypes.h"
 
 struct FlecsTestToppings : flecs::bitmask {
@@ -138,6 +142,44 @@ static flecs::opaque<std::vector<T>, T> std_vector_support(flecs::world& world) 
     });
 
     return ts;
+}
+
+template <typename T>
+static flecs::opaque<std::optional<T>, T>
+std_optional_support(flecs::world &world) {
+    return flecs::opaque<std::optional<T>, T>()
+      .as_type(world.vector<T>())
+      .serialize(
+        [](const flecs::serializer *s, const std::optional<T> *data) {
+          if (*data) {
+            s->value(**data);
+          }
+          return 0;
+        })
+      .count([](const std::optional<T> *data) -> size_t {
+        return *data ? 1 : 0;
+      })
+      .resize([](std::optional<T> *data, size_t size) {
+        switch (size) {
+        case 0:
+                *data = std::nullopt;
+                break;
+              case 1:
+                if(!data->has_value()) {
+                  *data = T();
+                }
+                break;
+              default:
+                assert(false);
+              }
+            })
+            .ensure_element(
+              [](std::optional<T> *data, size_t) {
+                  if(!data->has_value()) {
+                    *data = T();
+                  }
+                  return &data->value();
+                });
 }
 
 void Meta_struct(void) {
@@ -938,7 +980,6 @@ void Meta_ser_deser_std_vector_std_string(void) {
     world.component<std::string>()
         .opaque(std_string_support);
 
-
     world.component<std::vector<std::string>>()
         .opaque(std_vector_support<std::string>);
 
@@ -1075,16 +1116,16 @@ void Meta_enum_w_bits(void) {
 	ecs.component<EnumWithBitsStruct>()
 		.member<EnumWithBits>("bits");
 
-	for (int i = 0; i < 30; i++)
+    for (int i = 0; i < 1; i++)
 	{
-		ecs.entity()
-			.child_of(ecs.entity())
+        ecs.entity("e")
+            .child_of(ecs.entity("p"))
 			.add<EnumWithBitsStruct>();
 	}
 
     auto q = ecs.query<EnumWithBitsStruct>();
     auto s = q.iter().to_json();
-    test_str(s.c_str(), "");
+    test_str(s.c_str(), "{\"results\":[{\"parent\":\"p\", \"name\":\"e\", \"fields\":{\"values\":[{\"bits\":\"BitAll\"}]}}]}");
 }
 
 void Meta_value_range(void) {
@@ -1312,8 +1353,8 @@ void Meta_out_of_order_member_declaration(void) {
     flecs::world ecs;
 
     auto c = ecs.component<Position>()
-        .member<float>("y", 1, offsetof(Position, y))
-        .member<float>("x", 1, offsetof(Position, x));
+        .member<float>("y", 0, offsetof(Position, y))
+        .member<float>("x", 0, offsetof(Position, x));
     test_assert(c != 0);
 
     const flecs::Component *ptr = c.try_get<flecs::Component>();
@@ -1401,6 +1442,145 @@ void Meta_query_to_json_w_default_desc(void) {
     test_str(q.to_json(&desc).c_str(), "{\"results\":[{\"name\":\"foo\", \"fields\":{\"values\":[0]}}]}");
 }
 
+void Meta_script_to_std_vector_int(void) {
+    flecs::world world;
+
+    world.component<std::vector<int>>("IntVec")
+        .opaque(std_vector_support<int>);
+
+    flecs::entity s = world.script()
+        .code("e { IntVec: [10, 20, 30] }")
+        .run();
+
+    const flecs::Script& sptr = s.get<flecs::Script>();
+    test_assert(sptr.error == nullptr);
+
+    flecs::entity e = world.lookup("e");
+    test_assert(e != 0);
+
+    const std::vector<int>& v = e.get<std::vector<int>>();
+    test_int(v.size(), 3);
+    test_int(v.at(0), 10);
+    test_int(v.at(1), 20);
+    test_int(v.at(2), 30);
+}
+
+void Meta_script_to_std_vector_std_string(void) {
+    flecs::world world;
+
+    world.component<std::string>()
+        .opaque(std_string_support);
+
+    world.component<std::vector<std::string>>("StringVec")
+        .opaque(std_vector_support<std::string>);
+
+    flecs::entity s = world.script()
+        .code("e { StringVec: [\"Hello\", \"World\"] }")
+        .run();
+
+    const flecs::Script& sptr = s.get<flecs::Script>();
+    test_assert(sptr.error == nullptr);
+
+    flecs::entity e = world.lookup("e");
+    test_assert(e != 0);
+
+    const std::vector<std::string>& v = e.get<std::vector<std::string>>();
+    test_int(v.size(), 2);
+    test_str(v.at(0).c_str(), "Hello");
+    test_str(v.at(1).c_str(), "World");
+}
+
+void Meta_anonymous_opaque_as_type_parent(void) {
+    // Implement testcase
+}
+
+void Meta_named_opaque_as_type_parent(void) {
+    // Implement testcase
+}
+
+void Meta_parented_opaque_as_type_parent(void) {
+    // Implement testcase
+}
+
+void Meta_ser_deser_std_optional_int(void) {
+    flecs::world world;
+
+    world.component<std::optional<int>>()
+        .opaque(&FFlecsMetaTestsSpec::std_optional_support<int>);
+
+    std::optional<int> o = std::nullopt;
+    test_str(world.to_json(&o).c_str(), "[]");
+
+    o = 1;
+    test_str(world.to_json(&o).c_str(), "[1]");
+
+    world.from_json(&o, "[]");
+    test_str(world.to_json(&o).c_str(), "[]");
+
+    world.from_json(&o, "[2]");
+    test_str(world.to_json(&o).c_str(), "[2]");
+}
+
+void Meta_ser_deser_std_optional_std_vector_int(void) {
+    flecs::world world;
+
+    world.component<std::vector<int>>()
+        .opaque(&std_vector_support<int>);
+
+    world.component<std::optional<std::vector<int>>>()
+        .opaque(&std_optional_support<std::vector<int>>);
+
+    std::optional<std::vector<int>> o = std::nullopt;
+    test_str(world.to_json(&o).c_str(), "[]");
+
+    o = {1, 2, 3};
+    test_str(world.to_json(&o).c_str(), "[[1, 2, 3]]");
+
+    world.from_json(&o, "[]");
+    test_str(world.to_json(&o).c_str(), "[]");
+
+    world.from_json(&o, "[[4, 5, 6]]");
+    test_str(world.to_json(&o).c_str(), "[[4, 5, 6]]");
+}
+
+void Meta_ser_deser_std_optional_std_string(void) {
+    flecs::world world;
+
+    world.component<std::string>()
+        .opaque(&FFlecsMetaTestsSpec::std_string_support);
+
+    world.component<std::optional<std::string>>()
+        .opaque(&FFlecsMetaTestsSpec::std_optional_support<std::string>);
+
+    std::optional<std::string> o = std::nullopt;
+    test_str(world.to_json(&o).c_str(), "[]");
+
+    o = "hello world";
+    test_str(world.to_json(&o).c_str(), "[\"hello world\"]");
+
+    world.from_json(&o, "[]");
+    test_str(world.to_json(&o).c_str(), "[]");
+
+    world.from_json(&o, "[\"foo bar\"]");
+    test_str(world.to_json(&o).c_str(), "[\"foo bar\"]");
+}
+
+// disable error C4800
+#pragma warning(push)
+#pragma warning(disable: 4800)
+void Meta_ser_deser_alias(void) {
+    flecs::world world;
+    flecs::entity parent = world.entity();
+    world.entity().child_of(parent).set_alias("child");
+    auto str = world.to_json();
+    test_assert(world.lookup("child"));
+
+    flecs::world world2;
+    world2.from_json(str);
+    test_assert(world2.lookup("child"));
+}
+#pragma warning(pop)
+
 END_DEFINE_SPEC(FFlecsMetaTestsSpec);
 
 /*"id": "Meta",
@@ -1463,7 +1643,16 @@ END_DEFINE_SPEC(FFlecsMetaTestsSpec);
                 "iter_to_json",
                 "query_to_json",
                 "entity_to_json_w_default_desc",
-                "query_to_json_w_default_desc"
+                "query_to_json_w_default_desc",
+                "script_to_std_vector_int",
+                "script_to_std_vector_std_string",
+                "anonymous_opaque_as_type_parent",
+                "named_opaque_as_type_parent",
+                "parented_opaque_as_type_parent",
+                "ser_deser_std_optional_int",
+                "ser_deser_std_optional_std_vector_int",
+                "ser_deser_std_optional_std_string",
+                "ser_deser_alias"
             ]*/
 
 void FFlecsMetaTestsSpec::Define()
@@ -1527,6 +1716,15 @@ void FFlecsMetaTestsSpec::Define()
     It("Meta_query_to_json", [&]() { Meta_query_to_json(); });
     It("Meta_entity_to_json_w_default_desc", [&]() { Meta_entity_to_json_w_default_desc(); });
     It("Meta_query_to_json_w_default_desc", [&]() { Meta_query_to_json_w_default_desc(); });
+    It("Meta_script_to_std_vector_int", [&]() { Meta_script_to_std_vector_int(); });
+    It("Meta_script_to_std_vector_std_string", [&]() { Meta_script_to_std_vector_std_string(); });
+    It("Meta_anonymous_opaque_as_type_parent", [&]() { Meta_anonymous_opaque_as_type_parent(); });
+    It("Meta_named_opaque_as_type_parent", [&]() { Meta_named_opaque_as_type_parent(); });
+    It("Meta_parented_opaque_as_type_parent", [&]() { Meta_parented_opaque_as_type_parent(); });
+    It("Meta_ser_deser_std_optional_int", [&]() { Meta_ser_deser_std_optional_int(); });
+    It("Meta_ser_deser_std_optional_std_vector_int", [&]() { Meta_ser_deser_std_optional_std_vector_int(); });
+    It("Meta_ser_deser_std_optional_std_string", [&]() { Meta_ser_deser_std_optional_std_string(); });
+    It("Meta_ser_deser_alias", [&]() { Meta_ser_deser_alias(); });
 }
 
 #endif // WITH_AUTOMATION_TESTS

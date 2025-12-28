@@ -329,13 +329,10 @@ typedef struct ecs_allocator_t ecs_allocator_t;
 ////////////////////////////////////////////////////////////////////////////////
 
 /* Magic number to identify the type of the object */
-enum
-{
-    ecs_world_t_magic    = (0x65637377),
-    ecs_stage_t_magic    = (0x65637373),
-    ecs_query_t_magic    = (0x65637375),
-    ecs_observer_t_magic = (0x65637362)
-};
+#define ecs_world_t_magic     (0x65637377)
+#define ecs_stage_t_magic     (0x65637373)
+#define ecs_query_t_magic     (0x65637375)
+#define ecs_observer_t_magic  (0x65637362)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -470,9 +467,10 @@ enum
 #define ECS_HOOK_IMPL(type, func, var, ...)\
     void func(ecs_iter_t *_it)\
     {\
+        type *field_data = ecs_field(_it, type, 0);\
         for (int32_t i = 0; i < _it->count; i ++) {\
             ecs_entity_t entity = _it->entities[i];\
-            type *var = ecs_field(_it, type, 0);\
+            type *var = &field_data[i];\
             (void)entity;\
             (void)var;\
             __VA_ARGS__\

@@ -66,7 +66,7 @@ char* flecs_strbuf_itoa(
 
 		char *p = ptr;
 		while (v) {
-            const int64_t vdiv = v / 10;
+            int64_t vdiv = v / 10;
             int64_t vmod = v - (vdiv * 10);
 			p[0] = (char)('0' + vmod);
             p ++;
@@ -438,8 +438,13 @@ char* ecs_strbuf_get(
     ecs_strbuf_appendch(b, '\0');
     result = b->content;
 
+#ifdef FLECS_SANITIZE
+    ecs_assert(ecs_os_strlen(result) <= (b->length - 1), 
+        ECS_INTERNAL_ERROR, NULL);
+#endif
+
     if (result == b->small_string) {
-        result = ecs_os_memdup_n(result, char, b->length + 1);
+        result = ecs_os_memdup_n(result, char, b->length);
     }
 
     b->length = 0;

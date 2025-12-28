@@ -16,7 +16,7 @@ typedef struct ecs_reachable_elem_t {
     ecs_record_t *record;
     ecs_entity_t src;
     ecs_id_t id;
-#ifndef NDEBUG
+#ifndef FLECS_NDEBUG
     ecs_table_t *table;
 #endif
 } ecs_reachable_elem_t;
@@ -70,6 +70,9 @@ struct ecs_component_record_t {
     /* Storage for sparse components */
     void *sparse;
 
+    /* Backref to tables with edges to non-fragmenting component ids */
+    ecs_vec_t dont_fragment_tables;
+
     /* Pair data */
     ecs_pair_record_t *pair;
 
@@ -78,11 +81,6 @@ struct ecs_component_record_t {
 
     /* Refcount */
     int32_t refcount;
-
-    /* Keep alive count. This count must be 0 when the component record is deleted. If
-     * it is not 0, an application attempted to delete an id that was still
-     * queried for. */
-    int32_t keep_alive;
 };
 
 /* Bootstrap cached id records */
@@ -95,6 +93,11 @@ void flecs_components_fini(
 
 /* Ensure component record for id */
 ecs_component_record_t* flecs_components_ensure(
+    ecs_world_t *world,
+    ecs_id_t id);
+
+/* Like flecs_components_ensure, but creates only if world is not in threaded mode */
+ecs_component_record_t* flecs_components_try_ensure(
     ecs_world_t *world,
     ecs_id_t id);
 
@@ -162,6 +165,9 @@ void flecs_component_record_init_dont_fragment(
 
 void flecs_component_record_init_exclusive(
     ecs_world_t *world,
+    ecs_component_record_t *cr);
+
+void flecs_component_shrink(
     ecs_component_record_t *cr);
 
 #endif

@@ -1,9 +1,13 @@
-﻿#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
+﻿// Elie Wiese-Namir © 2025. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#include "Bake/FlecsTestUtils.h"
+
+#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
 
 #include "flecs.h"
 
-#include "Misc/AutomationTest.h"
-#include "Bake/FlecsTestUtils.h"
 #include "Bake/FlecsTestTypes.h"
 
 void World_multi_world_empty(void) {

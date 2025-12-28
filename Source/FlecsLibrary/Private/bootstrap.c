@@ -121,11 +121,14 @@ static
 bool flecs_set_id_flag(
     ecs_world_t *world,
     ecs_component_record_t *cr, 
-    ecs_flags32_t flag)
+    ecs_flags32_t flag,
+    ecs_entity_t trait)
 {
+    (void)trait;
+
     if (!(cr->flags & flag)) {
         cr->flags |= flag;
-        if (flag == EcsIdIsSparse) {
+        if (flag == EcsIdSparse) {
             flecs_component_init_sparse(world, cr);
         }
 
@@ -135,12 +138,6 @@ bool flecs_set_id_flag(
 
         if (flag == EcsIdExclusive) {
             flecs_component_record_init_exclusive(world, cr);
-        }
-
-        if (flag == EcsIdOnInstantiateInherit) {
-            if (cr->id < FLECS_HI_COMPONENT_ID) {
-                world->non_trivial_lookup[cr->id] |= EcsNonTrivialIdInherit;
-            }
         }
 
         return true;
@@ -166,10 +163,25 @@ bool flecs_unset_id_flag(
     return false;
 }
 
+typedef struct ecs_on_trait_ctx_t {
+    ecs_flags32_t flag, not_flag;
+} ecs_on_trait_ctx_t;
+
 static
-void flecs_register_id_flag_for_relation(
+bool flecs_trait_can_add_after_query(
+    ecs_entity_t trait)
+{
+    if (trait == EcsWith) {
+        return true;
+    }
+
+    return false;
+}
+
+static
+void flecs_register_flag_for_trait(
     ecs_iter_t *it,
-    ecs_entity_t prop,
+    ecs_entity_t trait,
     ecs_flags32_t flag,
     ecs_flags32_t not_flag,
     ecs_flags32_t entity_flag)
@@ -183,21 +195,36 @@ void flecs_register_id_flag_for_relation(
         bool changed = false;
 
         if (event == EcsOnAdd) {
-            ecs_component_record_t *cr;
-            if (!ecs_has_id(world, e, EcsRelationship) &&
-                !ecs_has_id(world, e, EcsTarget)) 
-            {
-                cr = flecs_components_ensure(world, e);
-                changed |= flecs_set_id_flag(world, cr, flag);
+            if (flag == EcsIdOnInstantiateInherit) {
+                if (e < FLECS_HI_COMPONENT_ID) {
+                    world->non_trivial_lookup[e] |= EcsNonTrivialIdInherit;
+                }
             }
 
-            cr = flecs_components_ensure(world, ecs_pair(e, EcsWildcard));
-            do {
-                changed |= flecs_set_id_flag(world, cr, flag);
-            } while ((cr = flecs_component_first_next(cr)));
+            if (!(world->flags & EcsWorldInit) && !flecs_trait_can_add_after_query(trait)) {
+                ecs_check(!flecs_component_is_trait_locked(world, e), ECS_INVALID_OPERATION, 
+                    "cannot set '%s' trait for component '%s' because it is already"
+                        " queried for (apply traits before creating queries)",
+                            flecs_errstr(ecs_get_path(world, trait)),
+                            flecs_errstr_1(ecs_id_str(world, e)));
+            }
+
+            ecs_component_record_t *cr = flecs_components_get(world, e);
+            if (cr) {
+                changed |= flecs_set_id_flag(world, cr, flag, trait);
+            }
+
+            cr = flecs_components_get(world, ecs_pair(e, EcsWildcard));
+            if (cr) {
+                do {
+                    changed |= flecs_set_id_flag(world, cr, flag, trait);
+                } while ((cr = flecs_component_first_next(cr)));
+            }
+
             if (entity_flag) flecs_add_flag(world, e, entity_flag);
         } else if (event == EcsOnRemove) {
             ecs_component_record_t *cr = flecs_components_get(world, e);
+            
             if (cr) changed |= flecs_unset_id_flag(cr, not_flag);
             cr = flecs_components_get(world, ecs_pair(e, EcsWildcard));
             if (cr) {
@@ -208,9 +235,11 @@ void flecs_register_id_flag_for_relation(
         }
 
         if (changed) {
-            flecs_assert_relation_unused(world, e, prop);
+            flecs_assert_relation_unused(world, e, trait);
         }
     }
+error:
+    return;
 }
 
 static
@@ -221,20 +250,24 @@ void flecs_register_final(ecs_iter_t *it) {
     for (i = 0; i < count; i ++) {
         ecs_entity_t e = it->entities[i];
         if (flecs_components_get(world, ecs_pair(EcsIsA, e)) != NULL) {
-            char *e_str = ecs_get_path(world, e);
             ecs_throw(ECS_INVALID_OPERATION,
                 "cannot change trait 'Final' for '%s': already inherited from",
-                    e_str);
-            ecs_os_free(e_str);
+                    flecs_errstr(ecs_get_path(world, e)));
+        }
+
+        ecs_check(!flecs_component_is_trait_locked(world, e), ECS_INVALID_OPERATION, "cannot change "
+            "trait 'Final' for '%s': already queried for (apply traits "
+            "before creating queries)", 
+                flecs_errstr(ecs_get_path(world, e)));
+
         error:
             continue;
-        }
     }
 }
 
 static
 void flecs_register_tag(ecs_iter_t *it) {
-    flecs_register_id_flag_for_relation(it, EcsPairIsTag, EcsIdTag, EcsIdTag, 0);
+    flecs_register_flag_for_trait(it, EcsPairIsTag, EcsIdPairIsTag, EcsIdPairIsTag, 0);
 
     /* Ensure that all id records for tag have type info set to NULL */
     ecs_world_t *world = it->real_world;
@@ -245,13 +278,14 @@ void flecs_register_tag(ecs_iter_t *it) {
         if (it->event == EcsOnAdd) {
             ecs_component_record_t *cr = flecs_components_get(world, 
                 ecs_pair(e, EcsWildcard));
-            ecs_assert(cr != NULL, ECS_INTERNAL_ERROR, NULL);
-            do {
-                if (cr->type_info != NULL) {
-                    flecs_assert_relation_unused(world, e, EcsPairIsTag);
-                }
-                cr->type_info = NULL;
-            } while ((cr = flecs_component_first_next(cr)));
+            if (cr) {
+                do {
+                    if (cr->type_info != NULL) {
+                        flecs_assert_relation_unused(world, e, EcsPairIsTag);
+                    }
+                    cr->type_info = NULL;
+                } while ((cr = flecs_component_first_next(cr)));
+            }
         }
     }
 }
@@ -259,7 +293,7 @@ void flecs_register_tag(ecs_iter_t *it) {
 static
 void flecs_register_on_delete(ecs_iter_t *it) {
     ecs_id_t id = ecs_field_id(it, 0);
-    flecs_register_id_flag_for_relation(it, EcsOnDelete, 
+    flecs_register_flag_for_trait(it, EcsOnDelete, 
         ECS_ID_ON_DELETE_FLAG(ECS_PAIR_SECOND(id)),
         EcsIdOnDeleteMask,
         EcsEntityIsId);
@@ -268,7 +302,7 @@ void flecs_register_on_delete(ecs_iter_t *it) {
 static
 void flecs_register_on_delete_object(ecs_iter_t *it) {
     ecs_id_t id = ecs_field_id(it, 0);
-    flecs_register_id_flag_for_relation(it, EcsOnDeleteTarget, 
+    flecs_register_flag_for_trait(it, EcsOnDeleteTarget, 
         ECS_ID_ON_DELETE_TARGET_FLAG(ECS_PAIR_SECOND(id)),
         EcsIdOnDeleteTargetMask,
         EcsEntityIsId);  
@@ -277,26 +311,22 @@ void flecs_register_on_delete_object(ecs_iter_t *it) {
 static
 void flecs_register_on_instantiate(ecs_iter_t *it) {
     ecs_id_t id = ecs_field_id(it, 0);
-    flecs_register_id_flag_for_relation(it, EcsOnInstantiate, 
+    flecs_register_flag_for_trait(it, EcsOnInstantiate, 
         ECS_ID_ON_INSTANTIATE_FLAG(ECS_PAIR_SECOND(id)),
         0, 0);
 }
 
-typedef struct ecs_on_trait_ctx_t {
-    ecs_flags32_t flag, not_flag;
-} ecs_on_trait_ctx_t;
-
 static
 void flecs_register_trait(ecs_iter_t *it) {
     ecs_on_trait_ctx_t *ctx = it->ctx;
-    flecs_register_id_flag_for_relation(
+    flecs_register_flag_for_trait(
         it, it->ids[0], ctx->flag, ctx->not_flag, 0);
 }
 
 static
 void flecs_register_trait_pair(ecs_iter_t *it) {
     ecs_on_trait_ctx_t *ctx = it->ctx;
-    flecs_register_id_flag_for_relation(
+    flecs_register_flag_for_trait(
         it, ecs_pair_first(it->world, it->ids[0]), ctx->flag, ctx->not_flag, 0);
 }
 
@@ -361,6 +391,7 @@ void flecs_register_symmetric(ecs_iter_t *it) {
     } 
 }
 
+#ifdef FLECS_DEBUG
 static
 void flecs_on_singleton_add_remove(ecs_iter_t *it) {
     ecs_entity_t component = ecs_field_id(it, 0);
@@ -394,20 +425,23 @@ void flecs_on_singleton_add_remove(ecs_iter_t *it) {
         continue;
     }
 }
+#endif
 
 static
 void flecs_register_singleton(ecs_iter_t *it) {
     ecs_world_t *world = it->real_world;
 
-    flecs_register_id_flag_for_relation(it, EcsSingleton, EcsIdSingleton, 0, 0);
+    (void)world;
+
+    flecs_register_flag_for_trait(it, EcsSingleton, EcsIdSingleton, 0, 0);
 
     int i, count = it->count;
     for (i = 0; i < count; i ++) {
         ecs_entity_t component = it->entities[i];
-
-        ecs_assert(flecs_components_get(world, component) != NULL, ECS_INTERNAL_ERROR, NULL);
+        (void)component;
 
         /* Create observer that enforces that singleton is only added to self */
+#ifdef FLECS_DEBUG
         ecs_observer(world, {
             .entity = ecs_entity(world, { .parent = component }),
             .query.terms[0] = { 
@@ -425,6 +459,7 @@ void flecs_register_singleton(ecs_iter_t *it) {
             .callback = flecs_on_singleton_add_remove,
             .events = {EcsOnAdd}
         });
+#endif
     }
 }
 
@@ -638,16 +673,16 @@ ecs_table_t* flecs_bootstrap_component_table(
 {
     /* Before creating table, manually set flags for ChildOf/Identifier, as this
      * can no longer be done after they are in use. */
-    ecs_component_record_t *cr = flecs_components_ensure(world, EcsChildOf);
-    cr->flags |= EcsIdOnDeleteTargetDelete | EcsIdOnInstantiateDontInherit |
-        EcsIdTraversable | EcsIdTag;
 
     /* Initialize id records cached on world */
     world->cr_childof_wildcard = flecs_components_ensure(world, 
         ecs_pair(EcsChildOf, EcsWildcard));
     world->cr_childof_wildcard->flags |= EcsIdOnDeleteTargetDelete | 
-        EcsIdOnInstantiateDontInherit | EcsIdTraversable | EcsIdTag | EcsIdExclusive;
-    cr = flecs_components_ensure(world, ecs_pair_t(EcsIdentifier, EcsWildcard));
+        EcsIdOnInstantiateDontInherit | EcsIdTraversable | EcsIdPairIsTag | 
+        EcsIdExclusive;
+
+    ecs_component_record_t *cr = flecs_components_ensure(
+        world, ecs_pair_t(EcsIdentifier, EcsWildcard));
     cr->flags |= EcsIdOnInstantiateDontInherit;
     world->cr_identifier_name = 
         flecs_components_ensure(world, ecs_pair_t(EcsIdentifier, EcsName));
@@ -1023,7 +1058,7 @@ void flecs_bootstrap(
         .callback = flecs_register_final
     });
 
-    static ecs_on_trait_ctx_t inheritable_trait = { EcsIdIsInheritable, 0 };
+    static ecs_on_trait_ctx_t inheritable_trait = { EcsIdInheritable, 0 };
     ecs_observer(world, {
         .query.terms = {{ .id = EcsInheritable }},
         .query.flags = EcsQueryMatchPrefab|EcsQueryMatchDisabled,
@@ -1082,7 +1117,7 @@ void flecs_bootstrap(
         .ctx = &traversable_trait
     });
 
-    static ecs_on_trait_ctx_t exclusive_trait = { EcsIdExclusive, EcsIdExclusive };
+    static ecs_on_trait_ctx_t exclusive_trait = { EcsIdExclusive, 0 };
     ecs_observer(world, {
         .query.terms = {{ .id = EcsExclusive  }},
         .query.flags = EcsQueryMatchPrefab|EcsQueryMatchDisabled,
@@ -1111,7 +1146,7 @@ void flecs_bootstrap(
         .ctx = &with_trait
     });
 
-    static ecs_on_trait_ctx_t sparse_trait = { EcsIdIsSparse, 0 };
+    static ecs_on_trait_ctx_t sparse_trait = { EcsIdSparse, 0 };
     ecs_observer(world, {
         .query.terms = {{ .id = EcsSparse }},
         .query.flags = EcsQueryMatchPrefab|EcsQueryMatchDisabled,

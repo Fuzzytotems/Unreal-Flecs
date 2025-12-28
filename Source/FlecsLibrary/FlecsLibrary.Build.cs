@@ -8,16 +8,26 @@ public class FlecsLibrary : ModuleRules
     {
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
         
-        const bool bCompileWithLibraryTests = false;
-        
         Type = ModuleType.CPlusPlus;
         
         CppStandard = CppStandardVersion.Cpp20;
-        CStandard = CStandardVersion.Latest;
-        
-        OptimizationLevel = OptimizationMode.Speed;
+        CStandard = CStandardVersion.C17;
         
         bool bIsMonolithic = Target.LinkType == TargetLinkType.Monolithic;
+        
+        PublicIncludePaths.AddRange(
+            new string[] {
+                ModuleDirectory + "/Public",
+            }
+        );
+        
+        PrivateIncludePaths.AddRange(
+            new string[] {
+                ModuleDirectory + "/Private",
+                ModuleDirectory + "/Tests",
+                ModuleDirectory + "/Fixtures",
+            }
+        );
         
         if (bIsMonolithic)
         {
@@ -30,9 +40,13 @@ public class FlecsLibrary : ModuleRules
             PrivateDefinitions.Add("flecs_EXPORTS");
         }
         
-        if (bCompileWithLibraryTests)
+        if (Target.bBuildEditor)
         {
-            PublicDefinitions.Add("FLECS_TESTS");
+            PublicDefinitions.Add("FLECS_LIBRARY_WITH_EDITOR=1");
+        }
+        else
+        {
+            PublicDefinitions.Add("FLECS_LIBRARY_WITH_EDITOR=0");
         }
         
         PublicDefinitions.AddRange(
@@ -49,11 +63,12 @@ public class FlecsLibrary : ModuleRules
                 "FLECS_META",
                 "FLECS_JSON",
                 "FLECS_SCRIPT_MATH",
+                "FLECS_ENABLE_SYSTEM_PRIORITY",
             }
         );
         
-        // Not Packaged
-        if (Target.Configuration != UnrealTargetConfiguration.Shipping)
+        // Not Test
+        if (Target.Configuration < UnrealTargetConfiguration.Test)
         {
             PublicDefinitions.AddRange(
                 new string[]
@@ -63,12 +78,20 @@ public class FlecsLibrary : ModuleRules
                     "FLECS_HTTP",
                     "FLECS_REST",
                     "FLECS_DOC",
-                    "FLECS_LOG",
+                    "FLECS_LOG", // @TODO: maybe shouldnt only be Test and below?
                     "FLECS_PERF_TRACE",
                     "FLECS_ACCURATE_COUNTERS",
-                    "FLECS_UNITS",
+                    "FLECS_UNITS", // @TODO: maybe shouldnt only be Test and below?
                     "FLECS_ALERTS",
-                    "FLECS_KEEP_ASSERT",
+                }
+            );
+        }
+        else // Shipping or Test
+        {
+            PublicDefinitions.AddRange(
+                new string[]
+                {
+                    "FLECS_DISABLE_COUNTERS",
                 }
             );
         }
@@ -76,20 +99,6 @@ public class FlecsLibrary : ModuleRules
         if (Target.bCompileAgainstEditor)
         {
         }
-        
-        PublicIncludePaths.AddRange(
-            new string[] {
-                ModuleDirectory + "/Public",
-            }
-        );
-        
-        PrivateIncludePaths.AddRange(
-            new string[] {
-                ModuleDirectory + "/Private",
-                ModuleDirectory + "/Tests",
-                ModuleDirectory + "/Fixtures",
-            }
-        );
         
         PublicDependencyModuleNames.AddRange(
             new string[]
@@ -104,8 +113,6 @@ public class FlecsLibrary : ModuleRules
             {
                 "CoreUObject",
                 "Engine",
-                "Slate",
-                "SlateCore",
             }
         );
     }

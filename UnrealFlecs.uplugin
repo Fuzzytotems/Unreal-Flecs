@@ -16,6 +16,16 @@
 	"Installed": false,
 	"Modules": [
 		{
+			"Name": "SolidMacros",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault"
+		},
+		{
+			"Name": "SolidMacrosEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PreDefault"
+		},
+		{
 			"Name": "FlecsLibrary",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
@@ -32,13 +42,17 @@
 		},
 		{
 			"Name": "UnrealFlecsTests",
-			"Type": "UncookedOnly",
-			"LoadingPhase": "PostDefault"
+			"Type": "DeveloperTool",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
 		{
-			"Name": "SolidMacros",
+			"Name": "ModularGameplay",
+			"Enabled": true
+		},
+		{
+			"Name": "GameFeatures",
 			"Enabled": true
 		}
 	],

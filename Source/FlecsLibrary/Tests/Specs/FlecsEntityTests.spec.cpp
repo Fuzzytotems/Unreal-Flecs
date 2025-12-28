@@ -1,9 +1,13 @@
-﻿#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
+﻿// Elie Wiese-Namir © 2025. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#include "Bake/FlecsTestUtils.h"
+
+#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
 
 #include "flecs.h"
 
-#include "Misc/AutomationTest.h"
-#include "Bake/FlecsTestUtils.h"
 #include "Bake/FlecsTestTypes.h"
 
 
@@ -1060,6 +1064,23 @@ void Entity_set_r_T(void) {
 	test_int(p.y, 20);
 }
 
+void Entity_set_r_t_generic_no_size(void) {
+	flecs::world world;
+
+	auto position = world.component<Position>();
+
+	Position position_data = {10, 20};
+
+	flecs::entity rel = world.entity();
+
+	flecs::entity e = world.entity()
+		.set_ptr(ecs_pair(rel, position), &position_data);
+
+	const Position* p = e.try_get_second<Position>(rel);
+	test_int(p->x, 10);
+	test_int(p->y, 20);
+}
+
 void Entity_assign_T(void) {
 	flecs::world world;
 	world.component<Position>();
@@ -2074,6 +2095,27 @@ void Entity_override_pair_w_tgt_id(void) {
 	test_assert(!e.owns<Position>(tgt_b));
 }
 
+void Entity_override_pair_w_rel_id(void) {
+	flecs::world world;
+
+	world.component<Position>();
+	auto rel_a = world.entity().add(flecs::OnInstantiate, flecs::Inherit);
+	auto rel_b = world.entity().add(flecs::OnInstantiate, flecs::Inherit);
+
+	auto base = world.entity()
+		.auto_override_second<Position>(rel_a)
+		.add_second<Position>(rel_b);
+
+	auto e = world.entity()
+		.add(flecs::IsA, base);
+
+	test_assert(e.has_second<Position>(rel_a));
+	test_assert(e.owns_second<Position>(rel_a));
+
+	test_assert(e.has_second<Position>(rel_b));
+	test_assert(!e.owns_second<Position>(rel_b));
+}
+
 void Entity_override_pair_w_ids(void) {
 	flecs::world world;
 
@@ -2117,6 +2159,28 @@ void Entity_override_pair(void) {
 
 	test_assert((e.has<Position, TagB>()));
 	test_assert((!e.owns<Position, TagB>()));
+}
+
+void Entity_override_pair_second(void) {
+	flecs::world world;
+
+	flecs::entity TagA = world.entity().add(flecs::OnInstantiate, flecs::Inherit);
+	flecs::entity TagB = world.entity().add(flecs::OnInstantiate, flecs::Inherit);
+
+	world.component<Position>();
+
+	auto base = world.entity()
+		.auto_override_second<Position>(TagA)
+		.add_second<Position>(TagB);
+
+	auto e = world.entity()
+		.add(flecs::IsA, base);
+
+	test_assert((e.has_second<Position>(TagA)));
+	test_assert((e.owns_second<Position>(TagA)));
+
+	test_assert((e.has_second<Position>(TagB)));
+	test_assert((!e.owns_second<Position>(TagB)));
 }
 
 void Entity_set_override(void) {
@@ -6065,6 +6129,153 @@ void Entity_defer_on_replace_w_assign_batched_existing_twice(void) {
 	test_assert(e.has<Velocity>());
 }
 
+void Entity_set_lvalue_to_mutable(void) {
+    flecs::world world;
+	world.component<FlecsTestLifecycleTracker>();
+
+    auto e = world.entity();
+
+    FlecsTestLifecycleTracker src;
+
+    e.set(src);
+
+    // Assertions are the exact same as in set_lvalue_to_const; src should have been copied, not moved
+    const auto* attached = e.try_get<FlecsTestLifecycleTracker>();
+    test_assert(attached != nullptr);
+
+    test_assert(attached->constructed_via == FlecsTestLifecycleTracker::Constructor::default_);
+    test_int(attached->times_copy_assigned_into, 1);
+    test_int(attached->times_copy_assigned_from, 0);
+    test_int(attached->times_copy_constructed_from, 0);
+    test_false(attached->moved_into() || attached->moved_from());
+    test_int(attached->times_destructed, 0);
+
+    test_assert(src.constructed_via == FlecsTestLifecycleTracker::Constructor::default_);
+    test_int(src.times_copy_assigned_into, 0);
+    test_int(src.times_copy_assigned_from, 1);
+    test_int(src.times_copy_constructed_from, 0);
+    test_false(src.moved_into() || src.moved_from());
+    test_int(src.times_destructed, 0);
+}
+
+void Entity_set_lvalue_to_const(void) {
+    flecs::world world;
+	world.component<FlecsTestLifecycleTracker>();
+
+    auto e = world.entity();
+
+    FlecsTestLifecycleTracker const src;
+
+    e.set(src);
+
+    const auto* attached = e.try_get<FlecsTestLifecycleTracker>();
+    test_assert(attached != nullptr);
+
+    test_assert(attached->constructed_via == FlecsTestLifecycleTracker::Constructor::default_);
+    test_int(attached->times_copy_assigned_into, 1);
+    test_int(attached->times_copy_assigned_from, 0);
+    test_int(attached->times_copy_constructed_from, 0);
+    test_false(attached->moved_into() || attached->moved_from());
+    test_int(attached->times_destructed, 0);
+
+    test_assert(src.constructed_via == FlecsTestLifecycleTracker::Constructor::default_);
+    test_int(src.times_copy_assigned_into, 0);
+    test_int(src.times_copy_assigned_from, 1);
+    test_int(src.times_copy_constructed_from, 0);
+    test_false(src.moved_into() || src.moved_from());
+    test_int(src.times_destructed, 0);
+}
+
+void Entity_set_rvalue(void) {
+    flecs::world world;
+	world.component<FlecsTestLifecycleTracker>();
+
+    auto e = world.entity();
+
+    FlecsTestLifecycleTracker src;
+
+    e.set(std::move(src));
+
+    const auto* attached = e.try_get<FlecsTestLifecycleTracker>();
+    test_assert(attached != nullptr);
+
+    test_assert(attached->constructed_via == FlecsTestLifecycleTracker::Constructor::default_);
+    test_int(attached->times_move_assigned_into, 1);
+    test_int(attached->times_move_assigned_from, 0);
+    test_int(attached->times_move_constructed_from, 0);
+    test_false(attached->copied_into() || attached->copied_from());
+    test_int(attached->times_destructed, 0);
+
+    test_assert(src.constructed_via == FlecsTestLifecycleTracker::Constructor::default_);
+    test_int(src.times_move_assigned_into, 0);
+    test_int(src.times_move_assigned_from, 1);
+    test_int(src.times_move_constructed_from, 0);
+    test_false(src.copied_into() || src.copied_from());
+    test_int(src.times_destructed, 0);
+}
+
+void Entity_set_non_copy_assignable(void) {
+	flecs::world world;
+	world.component<NonCopyAssignable>();
+
+	NonCopyAssignable v;
+	v.x = 10;
+
+	flecs::entity e = world.entity().set(v);
+
+	const NonCopyAssignable* comp = e.try_get<NonCopyAssignable>();
+	test_assert(comp != nullptr);
+	test_int(comp->x, 10);
+}
+
+void Entity_set_non_copy_assignable_w_move_assign(void) {
+	flecs::world world;
+	world.component<NonCopyAssignableWMoveAssign>();
+
+	NonCopyAssignableWMoveAssign v;
+	v.x = 10;
+	test_int(v.moved, 0);
+
+	flecs::entity e = world.entity().set(v);
+
+	const NonCopyAssignableWMoveAssign* comp = e.try_get<NonCopyAssignableWMoveAssign>();
+	test_assert(comp != nullptr);
+	test_int(comp->x, 10);
+	test_int(comp->moved, 1);
+}
+
+void Entity_assign_non_copy_assignable(void) {
+	flecs::world world;
+	world.component<NonCopyAssignable>();
+
+	NonCopyAssignable v;
+	v.x = 10;
+
+	flecs::entity e = world.entity().add<NonCopyAssignable>();
+	e.assign(v);
+
+	const NonCopyAssignable* comp = e.try_get<NonCopyAssignable>();
+	test_assert(comp != nullptr);
+	test_int(comp->x, 10);
+}
+
+void Entity_assign_non_copy_assignable_w_move_assign(void) {
+	flecs::world world;
+	world.component<NonCopyAssignableWMoveAssign>();
+
+	NonCopyAssignableWMoveAssign v;
+	v.x = 10;
+	test_int(v.moved, 0);
+
+	flecs::entity e = world.entity().add<NonCopyAssignableWMoveAssign>();
+	e.assign(v);
+
+	const NonCopyAssignableWMoveAssign* comp = e.try_get<NonCopyAssignableWMoveAssign>();
+	test_assert(comp != nullptr);
+	test_int(comp->x, 10);
+	test_int(comp->moved, 1);
+}
+
 END_DEFINE_SPEC(FFlecsEntityTestsSpec);
 
 /*""id": "Entity",
@@ -6151,6 +6362,7 @@ END_DEFINE_SPEC(FFlecsEntityTestsSpec);
                 "set_R_t",
                 "set_R_T",
                 "set_r_T",
+				"set_r_t_generic_no_size",
                 "assign_T",
                 "assign_R_t",
                 "assign_R_T",
@@ -6213,7 +6425,9 @@ END_DEFINE_SPEC(FFlecsEntityTestsSpec);
                 "override",
                 "override_id",
                 "override_pair",
+				"override_pair_second",
                 "override_pair_w_tgt_id",
+				"override_pair_w_rel_id",
                 "override_pair_w_ids",
                 "set_override",
                 "set_override_lvalue",
@@ -6417,7 +6631,14 @@ END_DEFINE_SPEC(FFlecsEntityTestsSpec);
                 "defer_on_replace_w_assign_existing",
                 "defer_on_replace_w_assign_existing_twice",
                 "defer_on_replace_w_assign_batched_existing",
-                "defer_on_replace_w_assign_batched_existing_twice"
+                "defer_on_replace_w_assign_batched_existing_twice",
+                "set_lvalue_to_mutable",
+                "set_lvalue_to_const",
+                "set_rvalue",
+                "set_non_copy_assignable",
+                "set_non_copy_assignable_w_move_assign",
+                "assign_non_copy_assignable",
+                "assign_non_copy_assignable_w_move_assign"
                 
             ]*/
 
@@ -6475,6 +6696,7 @@ void FFlecsEntityTestsSpec::Define()
 	It("Entity_set_R_type_t_entity", [&]() { Entity_set_R_t(); });
 	It("Entity_set_R_type_T_type", [&]() { Entity_set_R_T(); });
 	It("Entity_set_r_entity_T_type", [&]() { Entity_set_r_T(); });
+	It("Entity_set_r_t_generic_no_size", [&]() { Entity_set_r_t_generic_no_size(); });
 	It("Entity_assign_T", [&]() { Entity_assign_T(); });
 	It("Entity_assign_R_type_t_entity", [&]() { Entity_assign_R_t(); });
 	It("Entity_assign_R_type_T_type", [&]() { Entity_assign_R_T(); });
@@ -6531,9 +6753,11 @@ void FFlecsEntityTestsSpec::Define()
 	It("Entity_set_deduced", [&]() { Entity_set_deduced(); });
 	It("Entity_override", [&]() { Entity_override(); });
 	It("Entity_override_id", [&]() { Entity_override_id(); });
-	It("Entity_override_pair_w_tgt_id", [&]() { Entity_override_pair_w_tgt_id(); });
-	It("Entity_override_pair_w_ids", [&]() { Entity_override_pair_w_ids(); });
 	It("Entity_override_pair", [&]() { Entity_override_pair(); });
+	It("Entity_override_pair_second", [&]() { Entity_override_pair_second(); });
+	It("Entity_override_pair_w_tgt_id", [&]() { Entity_override_pair_w_tgt_id(); });
+	It("Entity_override_pair_w_rel_id", [&]() { Entity_override_pair_w_rel_id(); });
+	It("Entity_override_pair_w_ids", [&]() { Entity_override_pair_w_ids(); });
 	It("Entity_set_override", [&]() { Entity_set_override(); });
 	It("Entity_set_override_lvalue", [&]() { Entity_set_override_lvalue(); });
 	It("Entity_set_override_pair", [&]() { Entity_set_override_pair(); });
@@ -6723,7 +6947,17 @@ void FFlecsEntityTestsSpec::Define()
 	It("Entity_defer_on_replace_w_set_existing_twice", [&]() { Entity_defer_on_replace_w_set_existing_twice(); });
 	It("Entity_defer_on_replace_w_set_batched", [&]() { Entity_defer_on_replace_w_set_batched(); });
 	It("Entity_defer_on_replace_w_set_batched_twice", [&]() { Entity_defer_on_replace_w_set_batched_twice(); });
-	
+	It("Entity_defer_on_replace_w_assign_existing", [&]() { Entity_defer_on_replace_w_assign_existing(); });
+	It("Entity_defer_on_replace_w_assign_existing_twice", [&]() { Entity_defer_on_replace_w_assign_existing_twice(); });
+	It("Entity_defer_on_replace_w_assign_batched_existing", [&]() { Entity_defer_on_replace_w_assign_batched_existing(); });
+	It("Entity_defer_on_replace_w_assign_batched_existing_twice", [&]() { Entity_defer_on_replace_w_assign_batched_existing_twice(); });
+	It("Entity_set_lvalue_to_mutable", [&]() { Entity_set_lvalue_to_mutable(); });
+	It("Entity_set_lvalue_to_const", [&]() { Entity_set_lvalue_to_const(); });
+	It("Entity_set_rvalue", [&]() { Entity_set_rvalue(); });
+	It("Entity_set_non_copy_assignable", [&]() { Entity_set_non_copy_assignable(); });
+	It("Entity_set_non_copy_assignable_w_move_assign", [&]() { Entity_set_non_copy_assignable_w_move_assign(); });
+	It("Entity_assign_non_copy_assignable", [&]() { Entity_assign_non_copy_assignable(); });
+	It("Entity_assign_non_copy_assignable_w_move_assign", [&]() { Entity_assign_non_copy_assignable_w_move_assign(); });
 }
 
 #endif // WITH_AUTOMATION_TESTS

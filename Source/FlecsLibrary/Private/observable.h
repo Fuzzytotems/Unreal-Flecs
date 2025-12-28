@@ -13,14 +13,6 @@ typedef struct ecs_event_id_record_t {
     ecs_map_t self_up;               /* map<trigger_id, trigger_t> */
     ecs_map_t up;                    /* map<trigger_id, trigger_t> */
 
-    ecs_map_t observers;             /* map<trigger_id, trigger_t> */
-
-    /* Triggers for SuperSet, SubSet */
-    ecs_map_t set_observers;         /* map<trigger_id, trigger_t> */
-
-    /* Triggers for Self with non-This subject */
-    ecs_map_t entity_observers;      /* map<trigger_id, trigger_t> */
-
     /* Number of active observers for (component) id */
     int32_t observer_count;
 } ecs_event_id_record_t;
@@ -84,7 +76,7 @@ void flecs_observable_fini(
 
 /* Check if any observers exist for event/component. */
 bool flecs_observers_exist(
-    ecs_observable_t *observable,
+    const ecs_observable_t *observable,
     ecs_id_t id,
     ecs_entity_t event);
 

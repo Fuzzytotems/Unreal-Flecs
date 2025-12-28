@@ -151,9 +151,9 @@ int32_t flecs_next_pow_of_2(
 
 /* Compare function for entity ids used for order_by */
 int flecs_entity_compare(
-    ecs_entity_t e1, 
-    const void *ptr1, 
-    ecs_entity_t e2, 
+    ecs_entity_t e1,
+    const void *ptr1,
+    ecs_entity_t e2,
     const void *ptr2); 
 
 /* Compare function for component ids used for qsort */
@@ -195,6 +195,10 @@ bool flecs_type_can_inherit_id(
 /* Cleanup type info data. */
 void flecs_fini_type_info(
     ecs_world_t *world);
+
+const ecs_type_info_t* flecs_determine_type_info_for_component(
+    const ecs_world_t *world,
+    ecs_id_t component);
 
 /* Utility for using allocated strings in assert/error messages */
 const char* flecs_errstr(

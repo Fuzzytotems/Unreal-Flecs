@@ -9,8 +9,7 @@
 #ifdef FLECS_PIPELINE
 #include "pipeline.h"
 
-static
-void flecs_pipeline_free(
+static void flecs_pipeline_free(
     ecs_pipeline_state_t *p) 
 {
     if (p) {
@@ -24,13 +23,20 @@ void flecs_pipeline_free(
     }
 }
 
+#ifdef FLECS_ENABLE_SYSTEM_PRIORITY
+
 static
 int compare_system_priority(
-    ecs_entity_t e1, const EcsSystemPriority *ptr1,
-    ecs_entity_t e2, const EcsSystemPriority *ptr2)
+    ecs_entity_t e1,
+    const EcsSystemPriority *ptr1,
+    ecs_entity_t e2,
+    const EcsSystemPriority *ptr2
+    )
 {
     return ptr1->value == ptr2->value ? flecs_entity_compare(e1, ptr1, e2, ptr2) : ptr1->value < ptr2->value ? -1 : 1;
 }
+
+#endif // FLECS_ENABLE_SYSTEM_PRIORITY
 
 static ECS_MOVE(EcsPipeline, dst, src, {
     flecs_pipeline_free(dst->state);
@@ -577,7 +583,7 @@ int32_t flecs_run_pipeline_ops(
         flecs_run_system(world, s, sys->query->entity, sys, stage_index,
             stage_count, delta_time, NULL);
 
-        ecs_os_linc(&world->info.systems_ran_frame);
+        ecs_os_linc(&world->info.systems_ran_total);
         ran_since_merge++;
 
         if (ran_since_merge == op->count) {
@@ -932,6 +938,8 @@ void FlecsPipelineImport(
         .move = ecs_move(EcsPipeline)
     });
 
+    #ifdef FLECS_ENABLE_SYSTEM_PRIORITY
+
     world->pipeline = ecs_pipeline(world, {
         .entity = ecs_entity(world, { .name = "BuiltinPipeline" }),
         .query = {
@@ -941,6 +949,7 @@ void FlecsPipelineImport(
                 { .id = ecs_dependson(EcsOnStart), .trav = EcsDependsOn, .oper = EcsNot },
                 { .id = EcsDisabled, .src.id = EcsUp, .trav = EcsDependsOn, .oper = EcsNot },
                 { .id = EcsDisabled, .src.id = EcsUp, .trav = EcsChildOf, .oper = EcsNot },
+                
                 { .id = ecs_id(EcsSystemPriority), .inout = EcsIn }
                 
             },
@@ -948,6 +957,24 @@ void FlecsPipelineImport(
             .order_by = ecs_id(EcsSystemPriority)
         }
     });
+
+    #else // FLECS_ENABLE_SYSTEM_PRIORITY
+
+    world->pipeline = ecs_pipeline(world, {
+        .entity = ecs_entity(world, { .name = "BuiltinPipeline" }),
+        .query = {
+            .terms = {
+                { .id = EcsSystem },
+                { .id = EcsPhase, .src.id = EcsCascade, .trav = EcsDependsOn },
+                { .id = ecs_dependson(EcsOnStart), .trav = EcsDependsOn, .oper = EcsNot },
+                { .id = EcsDisabled, .src.id = EcsUp, .trav = EcsDependsOn, .oper = EcsNot },
+                { .id = EcsDisabled, .src.id = EcsUp, .trav = EcsChildOf, .oper = EcsNot },
+            },
+            .order_by_callback = flecs_entity_compare
+        }
+    });
+    
+    #endif // FLECS_ENABLE_SYSTEM_PRIORITY
 
     /* Cleanup thread administration when world is destroyed */
     ecs_atfini(world, FlecsPipelineFini, NULL);

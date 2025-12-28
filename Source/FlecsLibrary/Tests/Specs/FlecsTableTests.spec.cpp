@@ -1,9 +1,13 @@
-﻿#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
+﻿// Elie Wiese-Namir © 2025. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#include "Bake/FlecsTestUtils.h"
+
+#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
 
 #include "flecs.h"
 
-#include "Misc/AutomationTest.h"
-#include "Bake/FlecsTestUtils.h"
 #include "Bake/FlecsTestTypes.h"
 
 BEGIN_DEFINE_SPEC(FFlecsTableTestsSpec,
@@ -627,7 +631,6 @@ END_DEFINE_SPEC(FFlecsTableTestsSpec);
 "unlock",
 "has_flags",
 "clear_entities"
-
 ]*/
 
 void FFlecsTableTestsSpec::Define()

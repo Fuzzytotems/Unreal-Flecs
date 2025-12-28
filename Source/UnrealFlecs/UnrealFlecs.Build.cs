@@ -8,17 +8,8 @@ public class UnrealFlecs : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		CppStandard = CppStandardVersion.Latest;
-		OptimizationLevel = OptimizationMode.Speed;
+		CppStandard = CppStandardVersion.Cpp20;
 		IWYUSupport = IWYUSupport.Full;
-		bEnableNonInlinedGenCppWarnings = true;
-
-		PublicIncludePaths.AddRange(
-			new string[] 
-			{
-				ModuleDirectory
-			}
-			);
 		
 		PublicDependencyModuleNames.AddRange(
 			new string[]

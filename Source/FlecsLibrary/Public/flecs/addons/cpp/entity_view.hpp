@@ -218,16 +218,9 @@ struct entity_view : public id {
 
         flecs::world world(world_);
 
-        if (rel == flecs::ChildOf) {
-            ecs_iter_t it = ecs_children(world_, id_);
-            while (ecs_children_next(&it)) {
-                _::each_delegate<Func>(FLECS_MOV(func)).invoke(&it);
-            }
-        } else {
-            ecs_iter_t it = ecs_each_id(world_, ecs_pair(rel, id_));
-            while (ecs_each_next(&it)) {
-                _::each_delegate<Func>(FLECS_MOV(func)).invoke(&it);
-            }
+        ecs_iter_t it = ecs_children_w_rel(world_, rel, id_);
+        while (ecs_children_next(&it)) {
+            _::each_delegate<Func>(FLECS_MOV(func)).invoke(&it);
         }
     }
 
@@ -832,6 +825,7 @@ struct entity_view : public id {
     template<typename Enum>
     Enum get_constant() const;
 
+    /** Get enum constant for enum relationship. */
     template<typename TInt>
     TInt get_constant(flecs::entity_t type_id) const;
     
@@ -1077,6 +1071,17 @@ struct entity_view : public id {
             _::type<Second>::id(world_));
     }
 
+    /** Check if entity owns the provided pair.
+     *
+     * @param first The first element of the pair.
+     * @tparam Second The second element of the pair.
+     * @return True if the entity owns the provided component, false otherwise.
+     */
+    template <typename Second>
+    bool owns_second(flecs::entity_t first) const {
+        return owns(first, _::type<Second>::id(world_));
+    }
+
     /** Test if id is enabled.
      *
      * @param id The id to test.
@@ -1115,6 +1120,17 @@ struct entity_view : public id {
     template <typename First>
     bool enabled(flecs::id_t second) const {
         return this->enabled(_::type<First>::id(world_), second);
+    }
+
+    /** Test if pair is enabled.
+     *
+     * @tparam Second The second element of the pair.
+     * @param first The first element of the pair.
+     * @return True if enabled, false if not.
+     */
+    template <typename Second>
+    bool enabled_second(flecs::entity_t first) const {
+        return this->enabled(first, _::type<Second>::id(world_));
     }
 
     /** Test if pair is enabled.

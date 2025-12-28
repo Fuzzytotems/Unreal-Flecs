@@ -70,9 +70,50 @@ void ecs_os_fini(void) {
 #define HAVE_EXECINFO 0
 #endif
 
-#if HAVE_EXECINFO
-#include <execinfo.h>
 #define ECS_BT_BUF_SIZE 100
+
+#ifdef ECS_TARGET_WINDOWS
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+#include <windows.h>
+#include <dbghelp.h>
+
+#ifdef ECS_TARGET_MSVC
+#pragma comment(lib, "DbgHelp.lib")
+#endif
+
+void flecs_dump_backtrace(
+    void *stream) 
+{
+    void* stack[ECS_BT_BUF_SIZE];
+    unsigned short frames;
+    SYMBOL_INFO *symbol;
+    HANDLE hProcess = GetCurrentProcess();
+
+    SymInitialize(hProcess, NULL, TRUE);
+
+    frames = CaptureStackBackTrace(0, ECS_BT_BUF_SIZE, stack, NULL);
+    symbol = (SYMBOL_INFO*)ecs_os_malloc(
+        sizeof(SYMBOL_INFO) + 256 * sizeof(char));
+    symbol->MaxNameLen = 255;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+
+    for (int i = 0; i < frames; i++) {
+        SymFromAddr(hProcess, (DWORD)(uintptr_t)stack[i], NULL, symbol);
+        fprintf(stream, "%s\n", symbol->Name);
+    }
+
+    ecs_os_free(symbol);
+}
+
+#elif HAVE_EXECINFO
+#include <execinfo.h>
 
 void flecs_dump_backtrace(
     void *stream) 
@@ -284,8 +325,8 @@ static
 void ecs_os_gettime(ecs_time_t *time) {
     ecs_assert(ecs_os_has_time() == true, ECS_MISSING_OS_API, NULL);
 
-    const uint64_t now = ecs_os_now();
-    const uint64_t sec = now / 1000000000;
+    uint64_t now = ecs_os_now();
+    uint64_t sec = now / 1000000000;
 
     assert(sec < UINT32_MAX);
     assert((now - sec * 1000000000) < UINT32_MAX);
@@ -294,6 +335,62 @@ void ecs_os_gettime(ecs_time_t *time) {
     time->nanosec = (uint32_t)(now - sec * 1000000000);
 }
 
+#ifdef FLECS_TRACK_OS_ALLOC
+ecs_size_t ecs_os_allocated_bytes = 0;
+static
+void* ecs_os_api_malloc(ecs_size_t size) {
+    ecs_os_linc(&ecs_os_api_malloc_count);
+    ecs_assert(size > 0, ECS_INVALID_PARAMETER, NULL);
+    void *result = malloc((size_t)size + 16);
+    *(ecs_size_t*)result = size;
+    ecs_os_allocated_bytes += size;
+    return ECS_OFFSET(result, 16);
+}
+
+static
+void* ecs_os_api_calloc(ecs_size_t size) {
+    ecs_os_linc(&ecs_os_api_calloc_count);
+    ecs_assert(size > 0, ECS_INVALID_PARAMETER, NULL);
+    void *result = calloc(1, (size_t)size + 16);
+    *(ecs_size_t*)result = size;
+    ecs_os_allocated_bytes += size;
+    return ECS_OFFSET(result, 16);
+}
+
+static
+void* ecs_os_api_realloc(void *ptr, ecs_size_t size) {
+    ecs_assert(size > 0, ECS_INVALID_PARAMETER, NULL);
+
+    if (ptr) {
+        ecs_os_linc(&ecs_os_api_realloc_count);
+        ptr = ECS_OFFSET(ptr, -16);
+        ecs_os_allocated_bytes -= *(ecs_size_t*)ptr;
+    } else {
+        /* If not actually reallocing, treat as malloc */
+        ecs_os_linc(&ecs_os_api_malloc_count);
+    }
+    
+    if (!size) {
+        return NULL;
+    }
+
+    ptr = realloc(ptr, (size_t)size + 16);
+    *(ecs_size_t*)ptr = size;
+    ecs_os_allocated_bytes += size;
+    return ECS_OFFSET(ptr, 16);
+}
+
+static
+void ecs_os_api_free(void *ptr) {
+    if (ptr) {
+        ptr = ECS_OFFSET(ptr, -16);
+        ecs_size_t size = *(ecs_size_t*)ptr;
+        ecs_os_allocated_bytes -= size;
+        ecs_os_linc(&ecs_os_api_free_count);
+    }
+    free(ptr);
+}
+#else
 static
 void* ecs_os_api_malloc(ecs_size_t size) {
     ecs_os_linc(&ecs_os_api_malloc_count);
@@ -329,11 +426,12 @@ void ecs_os_api_free(void *ptr) {
     }
     free(ptr);
 }
+#endif
 
 static
 char* ecs_os_api_strdup(const char *str) {
     if (str) {
-        const int len = ecs_os_strlen(str);
+        int len = ecs_os_strlen(str);
         char *result = ecs_os_malloc(len + 1);
         ecs_assert(result != NULL, ECS_OUT_OF_MEMORY, NULL);
         ecs_os_strcpy(result, str);
@@ -373,8 +471,8 @@ void ecs_os_perf_trace_pop_(
 static
 char *module_file_base(const char *module, char sep) {
     char *base = ecs_os_strdup(module);
-    const ecs_size_t len = ecs_os_strlen(base);
-    for (ecs_size_t i = 0; i < len; i ++) {
+    ecs_size_t i, len = ecs_os_strlen(base);
+    for (i = 0; i < len; i ++) {
         if (base[i] == '.') {
             base[i] = sep;
         }

@@ -1,9 +1,13 @@
-﻿#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
+﻿// Elie Wiese-Namir © 2025. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#include "Bake/FlecsTestUtils.h"
+
+#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
 
 #include "flecs.h"
 
-#include "Misc/AutomationTest.h"
-#include "Bake/FlecsTestUtils.h"
 #include "Bake/FlecsTestTypes.h"
 
 struct MyTag { };
@@ -2448,6 +2452,7 @@ void System_run_w_0_src_query(void) {
 }
 
 void System_priority_test(void) {
+    #ifdef FLECS_ENABLE_SYSTEM_PRIORITY
     flecs::world ecs;
     RegisterTestTypeComponents(ecs);
 
@@ -2483,6 +2488,8 @@ void System_priority_test(void) {
 
     ecs.progress();
     test_int(count, 4);
+
+    #endif // FLECS_ENABLE_SYSTEM_PRIORITY
 }
 
 

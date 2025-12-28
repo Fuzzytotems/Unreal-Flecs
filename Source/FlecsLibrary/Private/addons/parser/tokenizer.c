@@ -88,8 +88,12 @@ const char* flecs_token_kind_str(
         return "keyword ";
     case EcsTokIdentifier:
         return "identifier ";
+    case EcsTokFunction:
+        return "function ";
     case EcsTokString:
         return "string ";
+    case EcsTokChar:
+        return "char ";
     case EcsTokNumber:
         return "number ";
     case EcsTokNewline:
@@ -156,7 +160,9 @@ const char* flecs_token_str(
     case EcsTokKeywordTemplate: return "template";
     case EcsTokKeywordModule: return "module";
     case EcsTokIdentifier: return "identifier";
+    case EcsTokFunction: return "function";
     case EcsTokString: return "string";
+    case EcsTokChar: return "char";
     case EcsTokNumber: return "number";
     case EcsTokNewline: return "newline";
     case EcsTokMember: return "member";
@@ -303,21 +309,13 @@ const char* flecs_tokenizer_identifier(
                     }
                 } while (true);
 
-                if (outpos && parser) {
-                    *outpos = '\0';
-                    parser->token_cur = outpos + 1;
-                }
-                return pos;
+                goto done;
             } else if (c == '>') {
                 ecs_parser_error(name, code, pos - code, 
                     "> without < in identifier");
                 return NULL;
             } else {
-                if (outpos && parser) {
-                    *outpos = '\0';
-                    parser->token_cur = outpos + 1;
-                }
-                return pos;
+                goto done;
             }
         }
 
@@ -328,6 +326,23 @@ const char* flecs_tokenizer_identifier(
 
         pos ++;
     } while (true);
+
+done:
+    if (outpos) {
+        *outpos = '\0';
+        if (parser) {
+            parser->token_cur = outpos + 1;
+        }
+    }
+
+    if (parser && parser->function_token) {
+        if (pos[0] == '(') {
+            out->kind = EcsTokFunction;
+            pos ++;
+        }
+    }
+
+    return pos;
 }
 
 // Number token static
@@ -434,6 +449,40 @@ const char* flecs_script_skip_string(
     }
 
     return pos;
+}
+
+static
+const char* flecs_script_char(
+    ecs_parser_t *parser,
+    const char *pos,
+    ecs_token_t *out)
+{
+    const char *end = flecs_script_skip_string(parser, pos + 1, '\'');
+    if (!end) {
+        return NULL;
+    }
+
+    ecs_assert(end[0] == '\'', ECS_INTERNAL_ERROR, NULL);
+    end --;
+
+    int32_t len = flecs_ito(int32_t, end - pos);
+    if(len == 0) {
+        ecs_parser_error(parser->name, parser->code,
+            pos - parser->code, "Empty char");
+        return NULL;
+    } else if((len > 2) || (len == 2 && parser->token_cur[0] == '\\')) {
+        ecs_parser_error(parser->name, parser->code,
+            pos - parser->code, "only one char allowed");
+        return NULL;
+    }
+
+    ecs_os_memcpy(parser->token_cur, pos + 1, len);
+    parser->token_cur[len] = '\0';
+
+    out->kind = EcsTokChar;
+    out->value = parser->token_cur;
+    parser->token_cur += len + 1;
+    return end + 2;
 }
 
 static
@@ -626,6 +675,9 @@ const char* flecs_token(
     Keyword           ("new",      EcsTokKeywordNew)
     Keyword           ("export",   EcsTokKeywordExport)
     Keyword           ("module",   EcsTokKeywordModule)
+
+    } else if (pos[0] == '\'') {
+        return flecs_script_char(parser, pos, out);
 
     } else if (pos[0] == '"') {
         return flecs_script_string(parser, pos, out);

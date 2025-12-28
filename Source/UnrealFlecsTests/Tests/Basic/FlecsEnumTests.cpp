@@ -2,16 +2,19 @@
 
 #pragma once
 
+#include "Misc/AutomationTest.h"
+
 #if WITH_AUTOMATION_TESTS
 
-#include "Tests/FlecsTestTypes.h"
+#include "UnrealFlecsTests/Tests/FlecsTestTypes.h"
+#include "Worlds/FlecsWorld.h"
 
 /** Layout of the tests:
  * A. Enum Register Add/Remove/Replace API Tests
  * B. Sparse Enum Register Add/Remove/Replace API Tests
  */
 TEST_CLASS_WITH_FLAGS_AND_TAGS(A5_UnrealFlecsEnumRegistrationTests,
-                               "UnrealFlecs.A5.Enums.Registration",
+                               "UnrealFlecs.A5_Enums.Registration",
                                EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
                                | EAutomationTestFlags::CriticalPriority,
                                "[Flecs][Component][Pair][Enum][CPP-API][StaticEnum-API]")
@@ -39,6 +42,7 @@ TEST_CLASS_WITH_FLAGS_AND_TAGS(A5_UnrealFlecsEnumRegistrationTests,
 								   "[Flecs][Component][Enum][StaticEnum-API]")
 	{
 		const FFlecsComponentHandle TestEnumEntity = FlecsWorld->RegisterComponentType(StaticEnum<EFlecsTestEnum_UENUM>());
+		ASSERT_THAT(IsTrue(TestEnumEntity.IsValid()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsComponent()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsEnum()));
 		
@@ -81,6 +85,7 @@ TEST_CLASS_WITH_FLAGS_AND_TAGS(A5_UnrealFlecsEnumRegistrationTests,
 								   "[Flecs][Component][Enum][CPP-API]")
 	{
 		const FFlecsComponentHandle TestEnumEntity = FlecsWorld->RegisterComponentType<EFlecsTestEnum_UENUM>();
+		ASSERT_THAT(IsTrue(TestEnumEntity.IsValid()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsComponent()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsEnum()));
 
@@ -119,6 +124,7 @@ TEST_CLASS_WITH_FLAGS_AND_TAGS(A5_UnrealFlecsEnumRegistrationTests,
 			"[Flecs][Component][Enum][StaticEnum-API]")
 	{ 
 		const FFlecsComponentHandle TestEnumEntity = FlecsWorld->RegisterComponentType(StaticEnum<EFlecsTestEnum_UENUM>());
+		ASSERT_THAT(IsTrue(TestEnumEntity.IsValid()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsComponent()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsEnum()));
 
@@ -157,6 +163,7 @@ TEST_CLASS_WITH_FLAGS_AND_TAGS(A5_UnrealFlecsEnumRegistrationTests,
 			"[Flecs][Component][Enum][CPP-API]")
 	{
 		const FFlecsComponentHandle TestEnumEntity = FlecsWorld->RegisterComponentType<EFlecsTestEnum_UENUM>();
+		ASSERT_THAT(IsTrue(TestEnumEntity.IsValid()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsComponent()));
 		ASSERT_THAT(IsTrue(TestEnumEntity.IsEnum()));
 
@@ -205,7 +212,7 @@ TEST_CLASS_WITH_FLAGS_AND_TAGS(A6_UnrealFlecsEnumTests,
 	inline static FFlecsComponentHandle EnumComponentEntity;
 	inline static FFlecsEntityHandle SparseEnumEntity;
 
-	BEFORE_ALL()
+	BEFORE_EACH()
 	{
 		Fixture = MakeUnique<FFlecsTestFixtureRAII>();
 		FlecsWorld = Fixture->Fixture.GetFlecsWorld();
@@ -214,7 +221,7 @@ TEST_CLASS_WITH_FLAGS_AND_TAGS(A6_UnrealFlecsEnumTests,
 		SparseEnumEntity = FlecsWorld->RegisterComponentType<EFlecsTestEnum_SparseUENUM>();
 	}
 
-	AFTER_ALL()
+	AFTER_EACH()
 	{
 		Fixture.Reset();
 		FlecsWorld = nullptr;

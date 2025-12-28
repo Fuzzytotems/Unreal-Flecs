@@ -11,8 +11,10 @@
 
 #include "flecs/os_api.h"
 #include "Concepts/SolidConcepts.h"
+#include "flecs/Unreal/FlecsScriptClassComponent.h"
 #include "flecs/Unreal/FlecsScriptStructComponent.h"
 #include "flecs/Unreal/FlecsTypeMapComponent.h"
+#include "flecs/Unreal/FlecsTypeRegisteredDelegate.h"
 
 /**
  * @defgroup cpp_components Components
@@ -128,6 +130,7 @@ void register_lifecycle_actions(
 }
 
 struct FLECS_API type_impl_data {
+    bool s_set_values;
     int32_t s_index;
     size_t s_size;
     size_t s_alignment;
@@ -145,12 +148,13 @@ FLECSLIBRARY_API extern robin_hood::unordered_map<std::string, type_impl_data> g
         std::string key = std::string(_::type_name<T>());  // => Solid::type_name<T>()
     
         auto it = g_type_to_impl_data.find(key);
-        if (it != g_type_to_impl_data.end()) {
+        if LIKELY_IF(it != g_type_to_impl_data.end()) {
             ecs_os_perf_trace_pop("flecs.type_impl.init");
             return it->second;
         }
         
         type_impl_data data = type_impl_data {
+            .s_set_values = true,
             .s_index = flecs_component_ids_index_get(),
             .s_size = sizeof(T),
             .s_alignment = alignof(T),
@@ -174,7 +178,7 @@ FLECSLIBRARY_API extern robin_hood::unordered_map<std::string, type_impl_data> g
     {
         const std::string key = std::string(_::type_name<T>());
         auto it = g_type_to_impl_data.find(key);
-        if (it != g_type_to_impl_data.end()) {
+        if LIKELY_IF(it != g_type_to_impl_data.end()) {
             return &it->second;
         }
         return nullptr;
@@ -193,6 +197,7 @@ struct type_impl {
         type_impl_data* td = get_type_data_if_any<T>();
         ecs_assert(td != nullptr, ECS_INTERNAL_ERROR, 
             "type data not found for %s", _::type_name<T>());
+        s_set_values = td->s_set_values;
         s_index = td->s_index;
         s_size = td->s_size;
         s_alignment = td->s_alignment;
@@ -230,6 +235,7 @@ struct type_impl {
         ecs_os_perf_trace_push("flecs.type_impl.register_id");
         
         auto& td = get_or_create_type_data<T>(allow_tag);
+        s_set_values = td.s_set_values;
         s_index = td.s_index;
         s_size = td.s_size;
         s_alignment = td.s_alignment;
@@ -239,8 +245,8 @@ struct type_impl {
         bool registered = false, existing = false;
 
         flecs::entity_t c = ecs_cpp_component_register(
-            world, id, s_index.value(), name, type_name<T>(), 
-            symbol_name<T>(), s_size.value(), s_alignment.value(),
+            world, id, s_index, name, type_name<T>(), 
+            symbol_name<T>(), s_size, s_alignment,
             is_component, explicit_registration, &registered, &existing);
         
         ecs_assert(c != 0, ECS_INTERNAL_ERROR, NULL);
@@ -268,6 +274,22 @@ struct type_impl {
                 entity_id.set<FFlecsScriptStructComponent>({ scriptStruct });
             }
 
+            if constexpr (Solid::IsStaticClass<T>())
+            {
+                flecs::world P_world(world);
+                UClass* scriptClass = StaticClass<T>();
+                
+                ecs_assert(scriptClass != nullptr, ECS_INTERNAL_ERROR, 
+                           "script class is null");
+
+                flecs::entity entity_id = flecs::entity(world, c);
+                
+                static_cast<FFlecsTypeMapComponent*>(P_world.get_binding_ctx())
+                    ->ScriptClassMap.emplace(scriptClass, entity_id);
+                
+                entity_id.set<FFlecsScriptClassComponent>({ scriptClass });
+            }
+
             // If component is enum type, register constants. Make sure to do 
             // this after setting the component id, because the enum code will
             // be calling type<T>::id().
@@ -293,6 +315,8 @@ struct type_impl {
             }
             
             #endif
+
+            FlecsLibrary::GetTypeRegisteredDelegate().Broadcast(c);
         }
 
         ecs_os_perf_trace_pop("flecs.type_impl.register_id");
@@ -323,7 +347,7 @@ struct type_impl {
             _::type_name<T>());
 
         if constexpr (std::is_enum<T>::value) {
-            if (!s_enum_registered.value()) {
+            if (!s_enum_registered) {
                 auto* td = get_type_data_if_any<T>();
                 ecs_assert(td != nullptr, ECS_INTERNAL_ERROR, 
                     "type data not found for %s", _::type_name<T>());
@@ -341,8 +365,8 @@ struct type_impl {
 
     // Return the size
     static size_t size() {
-        if (s_size.has_value()) [[likely]] {
-            return s_size.value();
+        if (s_set_values) [[likely]] {
+            return s_size;
         }
 
         auto* td = get_type_data_if_any<T>();
@@ -351,13 +375,13 @@ struct type_impl {
         }
 
         s_size = td->s_size;
-        return s_size.value();
+        return s_size;
     }
 
     // Return the alignment
     static size_t alignment() {
-        if (s_alignment.has_value()) [[likely]] {
-            return s_alignment.value();
+        if (s_set_values) [[likely]] {
+            return s_alignment;
         }
 
         auto* td = get_type_data_if_any<T>();
@@ -366,12 +390,12 @@ struct type_impl {
         }
 
         s_alignment = td->s_alignment;
-        return s_alignment.value();
+        return s_alignment;
     }
         
     static int32_t index() {
-        if (s_index.has_value()) [[likely]] {
-            return s_index.value();
+        if (s_set_values) [[likely]] {
+            return s_index;
         }
         
         auto* td = get_type_data_if_any<T>();
@@ -380,7 +404,7 @@ struct type_impl {
         }
         
         s_index = td->s_index;
-        return s_index.value();
+        return s_index;
     }
 
     // Check if T is registered in the provided world
@@ -398,26 +422,29 @@ struct type_impl {
         
     static void reset()
     {
-        s_index.reset();
-        s_size.reset();
-        s_alignment.reset();
-        s_allow_tag.reset();
-        s_enum_registered.reset();
+        s_set_values = false;
+        s_index = 0;
+        s_size = 0;
+        s_alignment = 0;
+        s_allow_tag = true;
+        s_enum_registered = false;
     }
-        
-    static std::optional<int32_t> s_index;
-    static std::optional<size_t> s_size;
-    static std::optional<size_t> s_alignment;
-    static std::optional<bool> s_allow_tag;
-    static std::optional<bool> s_enum_registered;
+
+    static bool s_set_values;
+    static int32_t s_index;
+    static size_t s_size;
+    static size_t s_alignment;
+    static bool s_allow_tag;
+    static bool s_enum_registered;
 };
 
     // Global templated variables that hold component identifier and other info
-    template <typename T> std::optional<int32_t>  type_impl<T>::s_index;
-    template <typename T> std::optional<size_t>   type_impl<T>::s_size;
-    template <typename T> std::optional<size_t>   type_impl<T>::s_alignment;
-    template <typename T> std::optional<bool>     type_impl<T>::s_allow_tag( true );
-    template <typename T> std::optional<bool>     type_impl<T>::s_enum_registered( false );
+    template <typename T> bool     type_impl<T>::s_set_values( false );
+    template <typename T> int32_t  type_impl<T>::s_index;
+    template <typename T> size_t   type_impl<T>::s_size;
+    template <typename T> size_t   type_impl<T>::s_alignment;
+    template <typename T> bool     type_impl<T>::s_allow_tag( true );
+    template <typename T> bool     type_impl<T>::s_enum_registered( false );
 
 // Front facing class for implicitly registering a component & obtaining
 // static component data
@@ -453,7 +480,7 @@ struct untyped_component : entity {
     explicit untyped_component(flecs::world_t *world, flecs::entity_t id) : entity(world, id) { }
     explicit untyped_component(flecs::entity_t id) : entity(id) { }
 
-    explicit untyped_component(flecs::world_t *world, const char *name)
+    explicit untyped_component(flecs::world_t *world, const char *name, const bool bUseLowId = true)
     {
         world_ = world;
 
@@ -461,7 +488,7 @@ struct untyped_component : entity {
         desc.name = name;
         desc.sep = "::";
         desc.root_sep = "::";
-        desc.use_low_id = true;
+        desc.use_low_id = bUseLowId;
         id_ = ecs_entity_init(world, &desc);
     }
 

@@ -1,9 +1,13 @@
-﻿#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
+﻿// Elie Wiese-Namir © 2025. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#include "Bake/FlecsTestUtils.h"
+
+#if WITH_AUTOMATION_TESTS && defined(FLECS_TESTS)
 
 #include "flecs.h"
 
-#include "Misc/AutomationTest.h"
-#include "Bake/FlecsTestUtils.h"
 #include "Bake/FlecsTestTypes.h"
 
 enum StandardEnum {
@@ -582,6 +586,30 @@ void Enum_add_enum_class_constant(void) {
     test_assert(id == ecs.pair(r, c));
 }
 
+void Enum_add_singleton_enum_constant(void) {
+    flecs::world ecs;
+
+    ecs.component<StandardEnum>().add(flecs::Singleton);
+
+    ecs.add(StandardEnum::Red);
+
+    test_assert(ecs.has(StandardEnum::Red));
+    test_assert(!ecs.has(StandardEnum::Green));
+    test_assert(!ecs.has(StandardEnum::Blue));
+
+    ecs.add(StandardEnum::Green);
+
+    test_assert(!ecs.has(StandardEnum::Red));
+    test_assert(ecs.has(StandardEnum::Green));
+    test_assert(!ecs.has(StandardEnum::Blue));
+
+    ecs.add(StandardEnum::Blue);
+
+    test_assert(!ecs.has(StandardEnum::Red));
+    test_assert(!ecs.has(StandardEnum::Green));
+    test_assert(ecs.has(StandardEnum::Blue));
+}
+
 void Enum_replace_enum_constants(void) {
     flecs::world ecs;
     ecs.component<StandardEnum>();
@@ -734,12 +762,56 @@ void Enum_query_enum_constant(void) {
     auto e1 = ecs.entity().add(StandardEnum::Blue);
 
     auto q = ecs.query_builder()
-        .with<StandardEnum>(StandardEnum::Blue)
+        .with(StandardEnum::Blue)
         .build();
 
     int32_t count = 0;
     q.each([&](flecs::iter& it, size_t index) {
         test_assert(it.entity(index) == e1);
+        test_assert(it.pair(0).second() == ecs.id(StandardEnum::Blue));
+        count ++;
+    });
+
+    test_int(count, 1);
+}
+
+void Enum_query_singleton_enum_constant(void) {
+    flecs::world ecs;
+
+    ecs.component<StandardEnum>().add(flecs::Singleton);
+
+    auto q = ecs.query_builder()
+        .with(StandardEnum::Blue)
+        .build();
+
+    int32_t count = 0;
+
+    q.each([&](flecs::iter& it, size_t index) {
+        count ++;
+    });
+
+    test_int(count, 0);
+
+    ecs.add(StandardEnum::Red);
+
+    q.each([&](flecs::iter& it, size_t index) {
+        count ++;
+    });
+
+    test_int(count, 0);
+
+    ecs.add(StandardEnum::Green);
+
+    q.each([&](flecs::iter& it, size_t index) {
+        count ++;
+    });
+
+    test_int(count, 0);
+
+    ecs.add(StandardEnum::Blue);
+
+    q.each([&](flecs::iter& it, size_t index) {
+        test_assert(it.src(0) == ecs.component<StandardEnum>());
         test_assert(it.pair(0).second() == ecs.id(StandardEnum::Blue));
         count ++;
     });
@@ -1546,6 +1618,7 @@ void Enum_runtime_type_constant_u8_template(void) {
     test_true(val_third != nullptr && *val_third == 3);
 }
 
+
 END_DEFINE_SPEC(FFlecsEnumTestsSpec);
 
 /* "id": "Enum",
@@ -1571,6 +1644,7 @@ END_DEFINE_SPEC(FFlecsEnumTestsSpec);
                 "enum_as_component",
                 "query_enum_wildcard",
                 "query_enum_constant",
+                "query_singleton_enum_constant",
                 "enum_type_from_stage",
                 "add_enum_from_stage",
                 "enum_w_2_worlds",
@@ -1625,6 +1699,7 @@ void FFlecsEnumTestsSpec::Define()
     It("enum_as_component", [&]() { Enum_enum_as_component(); });
     It("query_enum_wildcard", [&]() { Enum_query_enum_wildcard(); });
     It("query_enum_constant", [&]() { Enum_query_enum_constant(); });
+    It("query_singleton_enum_constant", [&]() { Enum_query_singleton_enum_constant(); });
     It("enum_type_from_stage", [&]() { Enum_enum_type_from_stage(); });
     It("add_enum_from_stage", [&]() { Enum_add_enum_from_stage(); });
     It("enum_w_2_worlds", [&]() { Enum_enum_w_2_worlds(); });

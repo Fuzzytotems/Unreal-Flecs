@@ -90,6 +90,7 @@ ecs_entity_t flecs_json_lookup(
     if (parent) {
         ecs_set_scope(world, scope);
     }
+
     return result;
 }
 
@@ -107,9 +108,10 @@ static
 ecs_entity_t flecs_json_ensure_entity(
     ecs_world_t *world,
     const char *name,
-    ecs_map_t *anonymous_ids)
+    void *ctx)
 {
     ecs_entity_t e = 0;
+    ecs_map_t *anonymous_ids = ctx;
 
     if (flecs_name_is_id(name)) {
         /* Anonymous entity, find or create mapping to new id */
@@ -161,6 +163,19 @@ ecs_entity_t flecs_json_ensure_entity(
 }
 
 static
+bool flecs_json_add_id_to_type(
+    ecs_id_t id)
+{
+    if (id == ecs_pair_t(EcsIdentifier, EcsName)) {
+        return false;
+    }
+    if (ECS_IS_PAIR(id) && ECS_PAIR_FIRST(id) == EcsChildOf) {
+        return false;
+    }
+    return true;
+}
+
+static
 const char* flecs_json_deser_tags(
     ecs_world_t *world,
     ecs_entity_t e,
@@ -192,7 +207,9 @@ const char* flecs_json_deser_tags(
         }
 
         ecs_entity_t tag = flecs_json_lookup(world, 0, str, desc);
-        ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = tag;
+        if (flecs_json_add_id_to_type(tag)) {
+            ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = tag;
+        }
 
         ecs_add_id(world, e, tag);
 
@@ -259,7 +276,9 @@ const char* flecs_json_deser_pairs(
                 ecs_entity_t tgt = flecs_json_lookup(world, 0, token, desc);
                 ecs_id_t id = ecs_pair(rel, tgt);
                 ecs_add_id(world, e, id);
-                ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = id;
+                if (flecs_json_add_id_to_type(id)) {
+                    ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = id;
+                }
             } else if (token_kind == JsonLargeString) {
                 ecs_strbuf_t large_token = ECS_STRBUF_INIT;
                 json = flecs_json_parse_large_string(json, &large_token);
@@ -272,7 +291,9 @@ const char* flecs_json_deser_pairs(
                 ecs_os_free(str);
                 ecs_id_t id = ecs_pair(rel, tgt);
                 ecs_add_id(world, e, id);
-                ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = id;
+                if (flecs_json_add_id_to_type(id)) {
+                    ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = id;
+                }
             } else if (token_kind == JsonArrayOpen) {
                 if (multiple_targets) {
                     ecs_parser_error(NULL, expr, json - expr, 
@@ -372,7 +393,8 @@ const char* flecs_json_deser_components(
         }
 
         bool skip = false;
-        if (ECS_IS_PAIR(id) && ECS_PAIR_FIRST(id) == ecs_id(EcsIdentifier)) {
+        if (ECS_IS_PAIR(id) && ECS_PAIR_FIRST(id) == ecs_id(EcsIdentifier)
+            && ECS_PAIR_SECOND(id) != EcsAlias) {
             skip = true;
         }
 
@@ -419,6 +441,7 @@ const char* flecs_json_deser_components(
                             ecs_modified_id(world, e, id);
                         }
                     } else {
+                        json = flecs_parse_ws_eol(json);
                         json = flecs_json_skip_object(json + 1, token, desc);
                         if (!json) {
                             goto error;
@@ -433,7 +456,10 @@ const char* flecs_json_deser_components(
             json = lah;
         }
 
-        ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = id;
+        /* Don't add ids that have their own fields in serialized data. */
+        if (flecs_json_add_id_to_type(id)) {
+            ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] = id;
+        }
 
         json = flecs_json_parse(json, &token_kind, token);
         if (token_kind != JsonComma) {
@@ -497,11 +523,13 @@ const char* flecs_entity_from_json(
         }
 
         parent = flecs_json_lookup(world, 0, str, desc);
+
         if (e) {
             ecs_add_pair(world, e, EcsChildOf, parent);
-            ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] =
-                ecs_pair(EcsChildOf, parent);
         }
+
+        ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] =
+            ecs_pair(EcsChildOf, parent);
 
         if (str != token) ecs_os_free(str);
 
@@ -525,6 +553,9 @@ const char* flecs_entity_from_json(
             e = flecs_json_lookup(world, parent, str, desc);
         } else {
             ecs_set_name(world, e, str);
+        }
+
+        if (str[0] != '#') {
             ecs_vec_append_t(ctx->a, &ctx->table_type, ecs_id_t)[0] =
                 ecs_pair_t(EcsIdentifier, EcsName);
         }
@@ -652,9 +683,18 @@ const char* flecs_entity_from_json(
 
         ecs_table_t *dst_table = ecs_table_find(world, 
             ecs_vec_first(&ctx->table_type), ecs_vec_count(&ctx->table_type));
+        if (dst_table->type.count == 0) {
+            dst_table = NULL;
+        }
 
         /* Entity had existing components that weren't in the serialized data */
         if (table != dst_table) {
+            ecs_assert(ecs_get_target(world, e, EcsChildOf, 0) != EcsFlecsCore,
+                ECS_INVALID_OPERATION, "%s\n[%s] => \n[%s]",
+                    ecs_get_path(world, e),
+                    ecs_table_str(world, table),
+                    ecs_table_str(world, dst_table));
+
             if (!dst_table) {
                 ecs_clear(world, e);
             } else {
@@ -712,8 +752,7 @@ const char* ecs_entity_from_json(
     ctx.expr = json;
 
     if (!desc.lookup_action) {
-        desc.lookup_action = (ecs_entity_t(*)(
-            const ecs_world_t*, const char*, void*))flecs_json_ensure_entity;
+        desc.lookup_action = flecs_json_ensure_entity;
         desc.lookup_ctx = &ctx.anonymous_ids;
     }
 
@@ -746,8 +785,7 @@ const char* ecs_world_from_json(
     ctx.expr = expr;
 
     if (!desc.lookup_action) {
-        desc.lookup_action = (ecs_entity_t(*)(
-            const ecs_world_t*, const char*, void*))flecs_json_ensure_entity;
+        desc.lookup_action = flecs_json_ensure_entity;
         desc.lookup_ctx = &ctx.anonymous_ids;
     }
 

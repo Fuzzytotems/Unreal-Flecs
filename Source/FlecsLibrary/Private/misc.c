@@ -60,7 +60,8 @@ int32_t flecs_next_pow_of_2(
 double ecs_time_to_double(
     ecs_time_t t)
 {
-    const double result = t.sec;
+    double result;
+    result = t.sec;
     return result + (double)t.nanosec / (double)1000000000;
 }
 
@@ -85,8 +86,8 @@ void ecs_sleepf(
     double t)
 {
     if (t > 0) {
-        const int sec = (int)t;
-        const int nsec = (int)((t - sec) * 1000000000);
+        int sec = (int)t;
+        int nsec = (int)((t - sec) * 1000000000);
         ecs_os_sleep(sec, nsec);
     }
 }
@@ -94,9 +95,9 @@ void ecs_sleepf(
 double ecs_time_measure(
     ecs_time_t *start)
 {
-    ecs_time_t stop;
+    ecs_time_t stop, temp;
     ecs_os_get_time(&stop);
-    const ecs_time_t temp = stop;
+    temp = stop;
     stop = ecs_time_sub(stop, *start);
     *start = temp;
     return ecs_time_to_double(stop);
@@ -117,9 +118,9 @@ void* ecs_os_memdup(
 }
 
 int flecs_entity_compare(
-    ecs_entity_t e1, 
-    const void *ptr1, 
-    ecs_entity_t e2, 
+    ecs_entity_t e1,
+    const void *ptr1,
+    ecs_entity_t e2,
     const void *ptr2) 
 {
     (void)ptr1;
@@ -128,8 +129,8 @@ int flecs_entity_compare(
 }
 
 int flecs_id_qsort_cmp(const void *a, const void *b) {
-    const ecs_id_t id_a = *(const ecs_id_t*)a;
-    const ecs_id_t id_b = *(const ecs_id_t*)b;
+    ecs_id_t id_a = *(const ecs_id_t*)a;
+    ecs_id_t id_b = *(const ecs_id_t*)b;
     return (id_a > id_b) - (id_a < id_b);
 }
 
@@ -137,12 +138,13 @@ char* flecs_vasprintf(
     const char *fmt,
     va_list args)
 {
+    ecs_size_t size = 0;
     char *result  = NULL;
     va_list tmpa;
 
     va_copy(tmpa, args);
 
-    const ecs_size_t size = vsnprintf(result, 0, fmt, tmpa);
+    size = vsnprintf(result, 0, fmt, tmpa);
 
     va_end(tmpa);
 
@@ -175,7 +177,7 @@ char* flecs_asprintf(
 char* flecs_to_snake_case(const char *str) {
     int32_t upper_count = 0, len = 1;
     const char *ptr = str;
-    char ch, *out_ptr;
+    char ch, *out, *out_ptr;
 
     for (ptr = &str[1]; (ch = *ptr); ptr ++) {
         if (isupper(ch)) {
@@ -184,7 +186,7 @@ char* flecs_to_snake_case(const char *str) {
         len ++;
     }
 
-    char* out = out_ptr = ecs_os_malloc_n(char, len + upper_count + 1);
+    out = out_ptr = ecs_os_malloc_n(char, len + upper_count + 1);
     for (ptr = str; (ch = *ptr); ptr ++) {
         if (isupper(ch)) {
             if ((ptr != str) && (out_ptr[-1] != '_')) {
@@ -209,6 +211,8 @@ char* flecs_load_from_file(
 {
     FILE* file;
     char* content = NULL;
+    int32_t bytes;
+    size_t size;
 
     /* Open file for reading */
     ecs_os_fopen(&file, filename, "r");
@@ -219,7 +223,7 @@ char* flecs_load_from_file(
 
     /* Determine file size */
     fseek(file, 0, SEEK_END);
-    const int32_t bytes = (int32_t)ftell(file);
+    bytes = (int32_t)ftell(file);
     if (bytes == -1) {
         goto error;
     }
@@ -227,7 +231,7 @@ char* flecs_load_from_file(
 
     /* Load contents in memory */
     content = ecs_os_malloc(bytes + 1);
-    size_t size = (size_t)bytes;
+    size = (size_t)bytes;
     if (!(size = fread(content, 1, size, file)) && bytes) {
         ecs_err("%s: read zero bytes instead of %d", filename, size);
         ecs_os_free(content);
@@ -375,8 +379,6 @@ ecs_size_t flecs_stresc(
     const char *in) 
 {
     const char *ptr = in;
-    ecs_assert(ptr, ECS_INTERNAL_ERROR, NULL);
-    
     char ch, *bptr = out, buff[3];
     ecs_size_t written = 0;
     while ((ch = *ptr++)) {
@@ -413,7 +415,7 @@ char* flecs_astresc(
         return NULL;
     }
 
-    const ecs_size_t len = flecs_stresc(NULL, 0, delimiter, in);
+    ecs_size_t len = flecs_stresc(NULL, 0, delimiter, in);
     char *out = ecs_os_malloc_n(char, len + 1);
     flecs_stresc(out, len, delimiter, in);
     out[len] = '\0';
@@ -460,7 +462,7 @@ const char* flecs_parse_ws_eol(
     return ptr;
 }
 
-#define FLECS_ERRSTR_MAX (64)
+#define FLECS_ERRSTR_MAX (256)
 static char flecs_errstr_buf[FLECS_ERRSTR_MAX];
 static char flecs_errstr_buf_1[FLECS_ERRSTR_MAX];
 static char flecs_errstr_buf_2[FLECS_ERRSTR_MAX];

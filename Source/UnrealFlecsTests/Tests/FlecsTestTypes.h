@@ -3,15 +3,26 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameplayTagsManager.h"
-#include "Entities/FlecsDefaultEntityEngineSubsystem.h"
-#include "Fixtures/FlecsWorldFixture.h"
+
 #include "UObject/Object.h"
+#include "GameplayTagsManager.h"
 #include "Developer/CQTest/Public/CQTest.h"
+
+#include "UnrealFlecsTests/Fixtures/FlecsWorldFixture.h"
+#include "Entities/FlecsDefaultEntityEngine.h"
+#include "Properties/FlecsComponentProperties.h"
+
 #include "FlecsTestTypes.generated.h"
 
 DECLARE_DEFAULT_ENTITY(TestEntityOption);
 DECLARE_DEFAULT_ENTITY(TestEntityOption2WithTrait);
+
+namespace Unreal::Flecs::test::internal
+{
+	DECLARE_DEFAULT_ENTITY(TestEntityOption3InNamespace);
+} // namespace Unreal::Flecs::test::internal
+
+DECLARE_DEFAULT_ENTITY(TestEntityOption4WithComponentValue);
 
 struct FFlecsTest_CPPStruct
 {
@@ -19,8 +30,33 @@ struct FFlecsTest_CPPStruct
 
 struct FFlecsTest_CPPStructValue
 {
-	int32 Value;
+	int32 Value = 1;
 }; // struct FFlecsTest_CPPStructWithNameAndValue
+
+struct FFlecsTest_CPPStruct_Traits
+{
+}; // struct FFlecsTest_CppStruct_Traits
+
+REGISTER_FLECS_COMPONENT(FFlecsTest_CPPStruct_Traits,
+	[](flecs::world InWorld, const FFlecsComponentHandle& InComponentHandle)
+	{
+		InComponentHandle
+			.Add(flecs::Trait)
+			.Add(flecs::PairIsTag);
+	});
+
+struct FFlecsTest_CPPStructValue_Traits
+{
+	uint32 Value = 0;
+}; // struct FFlecsTest_CPPStruct_Value
+
+REGISTER_FLECS_COMPONENT(FFlecsTest_CPPStructValue_Traits,
+	[](flecs::world InWorld, const FFlecsComponentHandle& InComponentHandle)
+	{
+		InComponentHandle
+			.Add(flecs::Trait)
+			.Add(flecs::PairIsTag);
+	});
 
 USTRUCT()
 struct FFlecsTestStruct_Tag
@@ -28,13 +64,26 @@ struct FFlecsTestStruct_Tag
 	GENERATED_BODY()
 }; // struct FFlecsTestStruct
 
+USTRUCT()
+struct FFlecsTestStruct_Tag_Inherited
+{
+	GENERATED_BODY()
+}; // struct FFlecsTestStruct
+
+REGISTER_FLECS_COMPONENT(FFlecsTestStruct_Tag_Inherited,
+	[](flecs::world InWorld, const FFlecsComponentHandle& InComponentHandle)
+	{
+		InComponentHandle
+			.AddPair(flecs::OnInstantiate, flecs::Inherit);
+	});
+
 USTRUCT(BlueprintType, BlueprintInternalUseOnly)
 struct FFlecsTestStruct_Value
 {
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flecs|Test")
-	int32 Value = 0;
+	int32 Value = 1;
 	
 }; // struct FFlecsTestStructWithNameAndValue
 
@@ -95,7 +144,28 @@ public:
 REGISTER_FLECS_COMPONENT(FFlecsTestStruct_WithPropertyTraits,
 	[](flecs::world InWorld, const FFlecsComponentHandle& InComponentHandle)
 	{
-		InComponentHandle.Add(flecs::Trait);
+		InComponentHandle
+			.Add(flecs::Trait)
+			.Add(flecs::PairIsTag);
+	});
+
+USTRUCT()
+struct FFlecsTestStructValue_WithPropertyTraits
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY()
+	uint32 Value = 0;
+	
+}; // struct FFlecsTestStruct_WithProperties
+
+REGISTER_FLECS_COMPONENT(FFlecsTestStructValue_WithPropertyTraits,
+	[](flecs::world InWorld, const FFlecsComponentHandle& InComponentHandle)
+	{
+		InComponentHandle
+			.Add(flecs::Trait)
+			.Add(flecs::PairIsTag);
 	});
 
 USTRUCT()
@@ -125,6 +195,26 @@ REGISTER_FLECS_COMPONENT(FFlecsTestStruct_PairIsTag,
 	{
 		InComponentHandle.Add(flecs::PairIsTag);
 	});
+
+USTRUCT()
+struct FFlecsTestStruct_EmptyRegistrationFunction
+{
+	GENERATED_BODY()
+}; // struct FFlecsTestStruct_EmptyRegistrationFunction
+
+REGISTER_FLECS_COMPONENT(FFlecsTestStruct_EmptyRegistrationFunction,
+	[](flecs::world InWorld, const FFlecsComponentHandle& InComponentHandle)
+	{
+		// Intentionally empty
+	});
+
+USTRUCT()
+struct FFlecsTestStruct_NoRegistrationLambda
+{
+	GENERATED_BODY()
+}; // struct FFlecsTestStruct_NoRegistrationLambda
+
+REGISTER_FLECS_COMPONENT(FFlecsTestStruct_NoRegistrationLambda);
 
 enum class ETestEnum : uint8
 {
@@ -235,6 +325,211 @@ struct alignas(64) FUStructTestComponent_CustomAlignedUSTRUCT_SixtyFourBytes
 
 }; // struct FUStructTestComponent_CustomAlignedUSTRUCT_SixtyFourBytes
 
+USTRUCT()
+struct FUStructTestComponent_MovableUSTRUCT
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString Name;
+
+	UPROPERTY()
+	TArray<int32> Values;
+
+	FUStructTestComponent_MovableUSTRUCT() = default;
+	
+}; // struct FUStructTestComponent_MovableUSTRUCT
+
+USTRUCT()
+struct FUStructTestComponent_MovableNotRegisteredUSTRUCT
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString Name;
+
+	UPROPERTY()
+	TArray<int32> Values;
+	
+	FUStructTestComponent_MovableNotRegisteredUSTRUCT() = default;
+	
+}; // struct FUStructTestComponent_MovableNotRegisteredUSTRUCT
+
+USTRUCT()
+struct FUStructTestComponent_LifecycleTracker
+{
+	GENERATED_BODY()
+	
+	enum class EConstructor : uint8
+	{
+		Default,
+		Copy,
+		Move
+	}; // enum class EConstructor
+	
+	EConstructor ConstructedVia = EConstructor::Default;
+
+	UPROPERTY()
+	int32 TimesDestructed = 0;
+
+	UPROPERTY()
+	int32 TimesCopyAssignedInto = 0;
+
+	mutable int32 TimesCopyAssignedFrom = 0;
+	mutable int32 TimesCopyConstructedFrom = 0;
+
+	UPROPERTY()
+	int32 TimesMoveAssignedInto = 0;
+
+	UPROPERTY()
+	int32 TimesMoveAssignedFrom = 0;
+
+	UPROPERTY()
+	int32 TimesMoveConstructedFrom = 0;
+
+	FUStructTestComponent_LifecycleTracker() = default;
+
+	FUStructTestComponent_LifecycleTracker(const FUStructTestComponent_LifecycleTracker& That)
+		: ConstructedVia(EConstructor::Copy)
+	{
+		++That.TimesCopyConstructedFrom;
+	}
+
+	FUStructTestComponent_LifecycleTracker& operator=(const FUStructTestComponent_LifecycleTracker& That)
+	{
+		++TimesCopyAssignedInto;
+		++That.TimesCopyAssignedFrom;
+		return *this;
+	}
+
+	FUStructTestComponent_LifecycleTracker(FUStructTestComponent_LifecycleTracker&& That) noexcept
+		: ConstructedVia(EConstructor::Move)
+	{
+		++That.TimesMoveConstructedFrom;
+	}
+
+	FUStructTestComponent_LifecycleTracker& operator=(FUStructTestComponent_LifecycleTracker&& That) noexcept
+	{
+		++TimesMoveAssignedInto;
+		++That.TimesMoveAssignedFrom;
+		return *this;
+	}
+
+	~FUStructTestComponent_LifecycleTracker()
+	{
+		++TimesDestructed;
+	}
+
+	// --- Convenience queries (match original semantics) ---
+	bool MovedFrom() const
+	{
+		return TimesMoveAssignedFrom > 0 || TimesMoveConstructedFrom > 0;
+	}
+
+	bool MovedInto() const
+	{
+		return TimesMoveAssignedInto > 0 || ConstructedVia == EConstructor::Move;
+	}
+
+	bool CopiedFrom() const
+	{
+		return TimesCopyAssignedFrom > 0 || TimesCopyConstructedFrom > 0;
+	}
+
+	bool CopiedInto() const
+	{
+		return TimesCopyAssignedInto > 0 || ConstructedVia == EConstructor::Copy;
+	}
+	
+}; // struct FUStructTestComponent_LifecycleTracker
+
+USTRUCT()
+struct FFlecsTestStruct_LifecycleTracker_NoMoveReg
+{
+	GENERATED_BODY()
+	
+	enum class EConstructor : uint8
+	{
+		Default,
+		Copy,
+		Move
+	}; // enum class EConstructor
+	
+	EConstructor ConstructedVia = EConstructor::Default;
+
+	UPROPERTY()
+	int32 TimesDestructed = 0;
+
+	UPROPERTY()
+	int32 TimesCopyAssignedInto = 0;
+
+	mutable int32 TimesCopyAssignedFrom = 0;
+	mutable int32 TimesCopyConstructedFrom = 0;
+
+	UPROPERTY()
+	int32 TimesMoveAssignedInto = 0;
+
+	UPROPERTY()
+	int32 TimesMoveAssignedFrom = 0;
+
+	UPROPERTY()
+	int32 TimesMoveConstructedFrom = 0;
+
+	FFlecsTestStruct_LifecycleTracker_NoMoveReg() = default;
+
+	FFlecsTestStruct_LifecycleTracker_NoMoveReg(const FFlecsTestStruct_LifecycleTracker_NoMoveReg& That)
+		: ConstructedVia(EConstructor::Copy)
+	{
+		++That.TimesCopyConstructedFrom;
+	}
+
+	FFlecsTestStruct_LifecycleTracker_NoMoveReg& operator=(const FFlecsTestStruct_LifecycleTracker_NoMoveReg& That)
+	{
+		++TimesCopyAssignedInto;
+		++That.TimesCopyAssignedFrom;
+		return *this;
+	}
+
+	FFlecsTestStruct_LifecycleTracker_NoMoveReg(FFlecsTestStruct_LifecycleTracker_NoMoveReg&& That) noexcept
+		: ConstructedVia(EConstructor::Move)
+	{
+		++That.TimesMoveConstructedFrom;
+	}
+
+	FFlecsTestStruct_LifecycleTracker_NoMoveReg& operator=(FFlecsTestStruct_LifecycleTracker_NoMoveReg&& That) noexcept
+	{
+		++TimesMoveAssignedInto;
+		++That.TimesMoveAssignedFrom;
+		return *this;
+	}
+
+	~FFlecsTestStruct_LifecycleTracker_NoMoveReg()
+	{
+		++TimesDestructed;
+	}
+
+	bool MovedFrom() const
+	{
+		return TimesMoveAssignedFrom > 0 || TimesMoveConstructedFrom > 0;
+	}
+
+	bool MovedInto() const
+	{
+		return TimesMoveAssignedInto > 0 || ConstructedVia == EConstructor::Move;
+	}
+
+	bool CopiedFrom() const
+	{
+		return TimesCopyAssignedFrom > 0 || TimesCopyConstructedFrom > 0;
+	}
+
+	bool CopiedInto() const
+	{
+		return TimesCopyAssignedInto > 0 || ConstructedVia == EConstructor::Copy;
+	}
+	
+}; // struct FFlecsTestStruct_LifecycleTracker_NoMoveReg
+
 struct FFlecsTestNativeGameplayTags : public FGameplayTagNativeAdder
 {
 	static FFlecsTestNativeGameplayTags StaticInstance;
@@ -263,7 +558,7 @@ struct FFlecsTestNativeGameplayTags : public FGameplayTagNativeAdder
 		TestSameSubGrandchildTag2 = Manager.AddNativeGameplayTag(TEXT("Test.UnrealFlecs.Sub1.Tag2"));
 	}
 
-	NO_DISCARD FORCEINLINE static const FFlecsTestNativeGameplayTags& Get()
+	static NO_DISCARD FORCEINLINE const FFlecsTestNativeGameplayTags& Get()
 	{
 		return StaticInstance;
 	}

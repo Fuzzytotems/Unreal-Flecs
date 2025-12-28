@@ -2,6 +2,14 @@
 
 #pragma once
 
+#include "Misc/AutomationTest.h"
+
+#include "FlecsLibraryConfigMacros.h"
+
+#if FLECS_LIBRARY_WITH_LIBRARY_TESTS
+#define FLECS_TESTS
+#endif // FLECS_LIBRARY_WITH_LIBRARY_TESTS
+
 #if WITH_AUTOMATION_TESTS
 
 #include "CoreMinimal.h"

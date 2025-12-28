@@ -39,6 +39,7 @@ inline void world::init_builtin_components() {
 
     flecs::entity ScriptStructEntity = this->component<FFlecsScriptStructComponent>()
         .add(flecs::Trait)
+        .add(flecs::OnInstantiate, flecs::DontInherit)
         .set<FFlecsScriptStructComponent>({ TBaseStructure<FFlecsScriptStructComponent>::Get() });
     
     ecs_assert(ScriptStructEntity.is_valid(), ECS_INTERNAL_ERROR, NULL);
@@ -46,6 +47,11 @@ inline void world::init_builtin_components() {
     type_map->ScriptStructMap.emplace(FFlecsScriptStructComponent::StaticStruct(), ScriptStructEntity);
 
     flecs::entity ScriptEnumEntity = this->component<FFlecsScriptEnumComponent>()
+        .add(flecs::OnInstantiate, flecs::DontInherit)
+        .add(flecs::Trait);
+
+    flecs::entity ScriptClassEntity = this->component<FFlecsScriptClassComponent>()
+        .add(flecs::OnInstantiate, flecs::DontInherit)
         .add(flecs::Trait);
 
 #   ifdef FLECS_SYSTEM
@@ -62,6 +68,9 @@ inline void world::init_builtin_components() {
 #   endif
 #   ifdef FLECS_META
     meta::_::init(*this);
+#   endif
+#   ifdef FLECS_SCRIPT
+    script::_::init(*this);
 #   endif
 }
 
@@ -280,6 +289,12 @@ inline bool world::has(flecs::id_t first, flecs::id_t second) const {
     return e.has(first, second);
 }
 
+template <typename E, if_t< is_enum<E>::value > >
+inline bool world::has(E value) const {
+    flecs::entity e(world_, _::type<E>::id(world_));
+    return e.has(value);
+}
+
 template <typename T>
 inline void world::add() const {
     flecs::entity e(world_, _::type<T>::id(world_));
@@ -301,6 +316,12 @@ inline void world::add(flecs::entity_t second) const {
 inline void world::add(flecs::entity_t first, flecs::entity_t second) const {
     flecs::entity e(world_, first);
     e.add(first, second);
+}
+
+template <typename E, if_t< is_enum<E>::value > >
+inline void world::add(E value) const {
+    flecs::entity e(world_, _::type<E>::id(world_));
+    e.add(value);
 }
 
 template <typename T>

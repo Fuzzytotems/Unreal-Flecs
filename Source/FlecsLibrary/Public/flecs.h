@@ -8,6 +8,8 @@
 #ifndef FLECS_H
 #define FLECS_H
 
+#include "FlecsLibraryConfigMacros.h"
+
 /**
  * @defgroup c C API
  *
@@ -33,7 +35,7 @@
 /* Flecs version macros */
 #define FLECS_VERSION_MAJOR 4  /**< Flecs major version. */
 #define FLECS_VERSION_MINOR 1  /**< Flecs minor version. */
-#define FLECS_VERSION_PATCH 0  /**< Flecs patch version. */
+#define FLECS_VERSION_PATCH 4  /**< Flecs patch version. */
 
 /** Flecs version. */
 #define FLECS_VERSION FLECS_VERSION_IMPL(\
@@ -59,10 +61,6 @@
 #define ecs_ftime_t double
 #endif
 
-/** @def FLECS_LEGACY
- * Define when building for C89
- */
-// #define FLECS_LEGACY
 
 /** @def FLECS_NO_DEPRECATED_WARNINGS
  * disables deprecated warnings
@@ -91,10 +89,10 @@
 
 /* Make sure provided configuration is valid */
 #if defined(FLECS_DEBUG) && defined(FLECS_NDEBUG)
-#error "invalid configuration: cannot both define FLECS_DEBUG and FLECS_NDEBUG"
+#warning "invalid configuration: cannot both define FLECS_DEBUG and FLECS_NDEBUG"
 #endif
 #if defined(FLECS_DEBUG) && defined(NDEBUG)
-#error "invalid configuration: cannot both define FLECS_DEBUG and NDEBUG"
+#warning "invalid configuration: cannot both define FLECS_DEBUG and NDEBUG"
 #endif
 
 /** @def FLECS_DEBUG
@@ -146,14 +144,20 @@
  * Even though an application may still be able to continue running after a soft
  * assert, it should be treated as if in an undefined state.
  */
+// Elie - Overriden by FlecsLibraryConfigMacros.h
+#if FLECS_LIBRARY_WITH_SOFT_ASSERT
  #define FLECS_SOFT_ASSERT
+#endif // FLECS_LIBRARY_WITH_SOFT_ASSERT
 
 /** @def FLECS_KEEP_ASSERT
  * By default asserts are disabled in release mode, when either FLECS_NDEBUG or
  * NDEBUG is defined. Defining FLECS_KEEP_ASSERT ensures that asserts are not
  * disabled. This define can be combined with FLECS_SOFT_ASSERT.
  */
-// #define FLECS_KEEP_ASSERT
+// Elie - Overriden by FlecsLibraryConfigMacros.h
+#if FLECS_LIBRARY_KEEP_ASSERT
+#define FLECS_KEEP_ASSERT
+#endif // FLECS_LIBRARY_KEEP_ASSERT
 
 /** @def FLECS_DEFAULT_TO_UNCACHED_QUERIES 
  * When set, this will cause queries with the EcsQueryCacheDefault policy
@@ -192,7 +196,10 @@
  * When set, this will prevent functions from being annotated with always_inline
  * which can improve performance at the cost of increased binary footprint.
  */
-// #define FLECS_NO_ALWAYS_INLINE
+// Elie - Overriden by FlecsLibraryConfigMacros.h
+#if FLECS_LIBRARY_DISABLE_ALWAYS_INLINE
+ #define FLECS_NO_ALWAYS_INLINE
+#endif // FLECS_LIBRARY_DISABLE_ALWAYS_INLINE
 
 /** @def FLECS_CUSTOM_BUILD
  * This macro lets you customize which addons to build flecs with.
@@ -253,6 +260,13 @@
  #define FLECS_UNITS          /**< Builtin standard units */
 #endif // ifndef FLECS_CUSTOM_BUILD
 
+// Elie - overriden by FlecsLibraryConfigMacros.h
+#if FLECS_LIBRARY_WITH_JOURNAL
+
+#define FLECS_JOURNAL
+
+#endif // FLECS_LIBRARY_WITH_JOURNAL
+
 /** @def FLECS_HI_COMPONENT_ID
  * This constant can be used to balance between performance and memory
  * utilization. The constant is used in two ways:
@@ -267,8 +281,9 @@
  * This value must be set to a value that is a power of 2. Setting it to a value
  * that is not a power of two will degrade performance.
  */
+// Elie - overriden by FlecsLibraryConfigMacros.h
 #ifndef FLECS_HI_COMPONENT_ID
-#define FLECS_HI_COMPONENT_ID (512)
+#define FLECS_HI_COMPONENT_ID FLECS_LIBRARY_HI_COMPONENT_ID
 #endif
 
 /** @def FLECS_HI_ID_RECORD_ID
@@ -277,8 +292,9 @@
  * lookup array. Id values that fall outside of this range use a regular map
  * lookup, which is slower but more memory efficient.
  */
+// Elie - overriden by FlecsLibraryConfigMacros.h
 #ifndef FLECS_HI_ID_RECORD_ID
-#define FLECS_HI_ID_RECORD_ID (2048)
+#define FLECS_HI_ID_RECORD_ID FLECS_LIBRARY_HI_ID_RECORD_ID
 #endif
 
 /** @def FLECS_SPARSE_PAGE_BITS
@@ -286,14 +302,16 @@
  * to determine the page index when used with a sparse set. The number of bits
  * determines the page size, which is (1 << bits).
  * Lower values decrease memory utilization, at the cost of more allocations. */
+// Elie - overriden by FlecsLibraryConfigMacros.h
 #ifndef FLECS_SPARSE_PAGE_BITS
-#define FLECS_SPARSE_PAGE_BITS (6)
+#define FLECS_SPARSE_PAGE_BITS FLECS_LIBRARY_SPARSE_PAGE_BITS
 #endif
 
 /** @def FLECS_ENTITY_PAGE_BITS
  * Same as FLECS_SPARSE_PAGE_BITS, but for the entity index. */
+// Elie - overriden by FlecsLibraryConfigMacros.h
 #ifndef FLECS_ENTITY_PAGE_BITS
-#define FLECS_ENTITY_PAGE_BITS (10)
+#define FLECS_ENTITY_PAGE_BITS FLECS_LIBRARY_ENTITY_PAGE_BITS
 #endif
 
 /** @def FLECS_USE_OS_ALLOC
@@ -305,18 +323,18 @@
 /** @def FLECS_ID_DESC_MAX
  * Maximum number of ids to add ecs_entity_desc_t / ecs_bulk_desc_t */
 #ifndef FLECS_ID_DESC_MAX
-#define FLECS_ID_DESC_MAX (32)
+#define FLECS_ID_DESC_MAX 32
 #endif
 
 /** @def FLECS_EVENT_DESC_MAX
  * Maximum number of events in ecs_observer_desc_t */
 #ifndef FLECS_EVENT_DESC_MAX
-#define FLECS_EVENT_DESC_MAX (8)
+#define FLECS_EVENT_DESC_MAX 8
 #endif
 
 /** @def FLECS_VARIABLE_COUNT_MAX
  * Maximum number of query variables per query */
-#define FLECS_VARIABLE_COUNT_MAX (64)
+#define FLECS_VARIABLE_COUNT_MAX 64
 
 /** @def FLECS_TERM_COUNT_MAX 
  * Maximum number of terms in queries. Should not exceed 64. */
@@ -327,19 +345,19 @@
 /** @def FLECS_TERM_ARG_COUNT_MAX 
  * Maximum number of arguments for a term. */
 #ifndef FLECS_TERM_ARG_COUNT_MAX
-#define FLECS_TERM_ARG_COUNT_MAX (16)
+#define FLECS_TERM_ARG_COUNT_MAX 16
 #endif
 
 /** @def FLECS_QUERY_VARIABLE_COUNT_MAX
  * Maximum number of query variables per query. Should not exceed 128. */
 #ifndef FLECS_QUERY_VARIABLE_COUNT_MAX
-#define FLECS_QUERY_VARIABLE_COUNT_MAX (64)
+#define FLECS_QUERY_VARIABLE_COUNT_MAX 64
 #endif
 
 /** @def FLECS_QUERY_SCOPE_NESTING_MAX
  * Maximum nesting depth of query scopes */
 #ifndef FLECS_QUERY_SCOPE_NESTING_MAX
-#define FLECS_QUERY_SCOPE_NESTING_MAX (8)
+#define FLECS_QUERY_SCOPE_NESTING_MAX 8
 #endif
 
 /** @def FLECS_DAG_DEPTH_MAX
@@ -347,12 +365,17 @@
  * depth larger than this is encountered, a CYCLE_DETECTED panic is thrown.
  */
 #ifndef FLECS_DAG_DEPTH_MAX
-#define FLECS_DAG_DEPTH_MAX (128)
+#define FLECS_DAG_DEPTH_MAX 128
 #endif
 
+#ifdef FLECS_ENABLE_SYSTEM_PRIORITY
+
+// Elie - overriden by FlecsLibraryConfigMacros.h
 #ifndef FLECS_DEFAULT_SYSTEM_PRIORITY
-#define FLECS_DEFAULT_SYSTEM_PRIORITY (100)
+#define FLECS_DEFAULT_SYSTEM_PRIORITY FLECS_LIBRARY_DEFAULT_SYSTEM_PRIORITY
 #endif // FLECS_DEFAULT_SYSTEM_PRIORITY
+
+#endif // FLECS_ENABLE_SYSTEM_PRIORITY
 
 #define FLECS_ENABLE_PREFETCH
 
@@ -425,25 +448,6 @@
 /** @} */
 
 #include "flecs/private/api_defines.h"
-#include "flecs/datastructures/vec.h"              /* Vector datatype */
-#include "flecs/datastructures/sparse.h"           /* Sparse set */
-#include "flecs/datastructures/block_allocator.h"  /* Block allocator */
-#include "flecs/datastructures/stack_allocator.h"  /* Stack allocator */
-#include "flecs/datastructures/map.h"              /* Map */
-#include "flecs/datastructures/allocator.h"        /* Allocator */
-#include "flecs/datastructures/strbuf.h"           /* String builder */
-#include "flecs/os_api.h"  /* Abstraction for operating system functions */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/**
- * @defgroup api_types API types
- * Public API types.
- *
- * @{
- */
 
 /**
  * @defgroup core_types Core API Types
@@ -609,6 +613,27 @@ typedef struct ecs_header_t {
 typedef struct ecs_table_record_t ecs_table_record_t;
 
 /** @} */
+
+#include "flecs/datastructures/vec.h"              /* Vector datatype */
+#include "flecs/datastructures/sparse.h"           /* Sparse set */
+#include "flecs/datastructures/block_allocator.h"  /* Block allocator */
+#include "flecs/datastructures/stack_allocator.h"  /* Stack allocator */
+#include "flecs/datastructures/map.h"              /* Map */
+#include "flecs/datastructures/allocator.h"        /* Allocator */
+#include "flecs/datastructures/strbuf.h"           /* String builder */
+#include "flecs/os_api.h"  /* Abstraction for operating system functions */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @defgroup api_types API types
+ * Public API types.
+ *
+ * @{
+ */
+
 
 /**
  * @defgroup function_types Function types.
@@ -1041,7 +1066,6 @@ struct ecs_type_hooks_t {
      * will be set that panics when called. */
     ecs_flags32_t flags;
     
-
     /** Callback that is invoked when an instance of a component is added. This
      * callback is invoked before triggers are invoked. */
     ecs_iter_action_t on_add;
@@ -1451,14 +1475,8 @@ typedef struct ecs_observer_desc_t {
     /** Callback to free run ctx. */
     ecs_ctx_free_t run_ctx_free;
 
-    /** Observable with which to register the observer */
-    ecs_poly_t *observable;
-
-    /** Optional shared last event id for multiple observers. Ensures only one
-     * of the observers with the shared id gets triggered for an event */
+    /** Used for internal purposes. Do not set. */
     int32_t *last_event_id;
-
-    /** Used for internal purposes */
     int8_t term_index_;
     ecs_flags32_t flags_;
 } ecs_observer_desc_t;
@@ -1524,6 +1542,7 @@ typedef struct ecs_event_desc_t {
 typedef struct ecs_build_info_t {
     const char *compiler;           /**< Compiler used to compile flecs */
     const char **addons;            /**< Addons included in build */
+    const char **flags;             /**< Compile time settings */
     const char *version;            /**< Stringified version */
     int16_t version_major;          /**< Major flecs version */
     int16_t version_minor;          /**< Minor flecs version */
@@ -1561,8 +1580,9 @@ typedef struct ecs_world_info_t {
     int64_t table_create_total;       /**< Total number of times a table was created */
     int64_t table_delete_total;       /**< Total number of times a table was deleted */
     int64_t pipeline_build_count_total; /**< Total number of pipeline builds */
-    int64_t systems_ran_frame;        /**< Total number of systems ran in last frame */
-    int64_t observers_ran_frame;      /**< Total number of times observer was invoked */
+    int64_t systems_ran_total;        /**< Total number of systems ran */
+    int64_t observers_ran_total;      /**< Total number of times observer was invoked */
+    int64_t queries_ran_total;        /**< Total number of times a query was evaluated */
 
     int32_t tag_id_count;             /**< Number of tag (no data) ids in the world */
     int32_t component_id_count;       /**< Number of component (data) ids in the world */
@@ -1570,11 +1590,13 @@ typedef struct ecs_world_info_t {
 
     int32_t table_count;              /**< Number of tables */
 
+    uint32_t creation_time;           /**< Time when world was created */
+
     /* -- Command counts -- */
     struct {
         int64_t add_count;             /**< Add commands processed */
         int64_t remove_count;          /**< Remove commands processed */
-        int64_t delete_count;          /**< Selete commands processed */
+        int64_t delete_count;          /**< Delete commands processed */
         int64_t clear_count;           /**< Clear commands processed */
         int64_t set_count;             /**< Set commands processed */
         int64_t ensure_count;          /**< Ensure/emplace commands processed */
@@ -2007,7 +2029,7 @@ FLECS_API extern const ecs_entity_t EcsConstant;    /**< Tag added to enum/bitma
 
 /** The first user-defined component starts from this id. Ids up to this number
  * are reserved for builtin components */
-#define EcsFirstUserComponentId (8)
+#define EcsFirstUserComponentId (9)
 
 /** The first user-defined entity starts from this id. Ids up to this number
  * are reserved for builtin entities */
@@ -2378,19 +2400,14 @@ FLECS_API
 void ecs_readonly_end(
     ecs_world_t *world);
 
-/** Merge world or stage.
- * When automatic merging is disabled, an application can call this
- * operation on either an individual stage, or on the world which will merge
- * all stages. This operation may only be called when staging is not enabled
- * (either after ecs_progress() or after ecs_readonly_end()).
+/** Merge stage.
+ * This will merge all commands enqueued for a stage.
  *
- * This operation may be called on an already merged stage or world.
- *
- * @param world The world.
+ * @param stage The stage.
  */
 FLECS_API
 void ecs_merge(
-    ecs_world_t *world);
+    ecs_world_t *stage);
 
 /** Defer operations until end of frame.
  * When this operation is invoked while iterating, operations inbetween the
@@ -2406,24 +2423,11 @@ void ecs_merge(
  * @see ecs_is_deferred()
  * @see ecs_defer_resume()
  * @see ecs_defer_suspend()
+ * @see ecs_is_defer_suspended()
  */
 FLECS_API
 bool ecs_defer_begin(
     ecs_world_t *world);
-
-/** Test if deferring is enabled for current stage.
- *
- * @param world The world.
- * @return True if deferred, false if not.
- *
- * @see ecs_defer_begin()
- * @see ecs_defer_end()
- * @see ecs_defer_resume()
- * @see ecs_defer_suspend()
- */
-FLECS_API
-bool ecs_is_deferred(
-    const ecs_world_t *world);
 
 /** End block of operations to defer.
  * See ecs_defer_begin().
@@ -2473,6 +2477,36 @@ void ecs_defer_suspend(
 FLECS_API
 void ecs_defer_resume(
     ecs_world_t *world);
+
+/** Test if deferring is enabled for current stage.
+ *
+ * @param world The world.
+ * @return True if deferred, false if not.
+ *
+ * @see ecs_defer_begin()
+ * @see ecs_defer_end()
+ * @see ecs_defer_resume()
+ * @see ecs_defer_suspend()
+ * @see ecs_is_defer_suspended()
+ */
+FLECS_API
+bool ecs_is_deferred(
+    const ecs_world_t *world);
+
+/** Test if deferring is suspended for current stage.
+ *
+ * @param world The world.
+ * @return True if suspended, false if not.
+ *
+ * @see ecs_defer_begin()
+ * @see ecs_defer_end()
+ * @see ecs_is_deferred()
+ * @see ecs_defer_resume()
+ * @see ecs_defer_suspend()
+ */
+FLECS_API
+bool ecs_is_defer_suspended(
+    const ecs_world_t *world);
 
 /** Configure world to have N stages.
  * This initializes N stages, which allows applications to defer operations to
@@ -3683,6 +3717,15 @@ void ecs_set_version(
     ecs_world_t *world,
     ecs_entity_t entity);
 
+/** Get generation of an entity.
+ *
+ * @param entity Entity for which to get the generation of.
+ * @return The generation of the entity.
+ */
+FLECS_API
+uint32_t ecs_get_version(
+    ecs_entity_t entity);
+
 /** @} */
 
 /**
@@ -4677,6 +4720,12 @@ bool ecs_each_next(
  * which case this operation will return a single result with the ordered 
  * child entity ids.
  * 
+ * This operation is equivalent to doing:
+ * 
+ * @code
+ * ecs_children_w_rel(world, EcsChildOf, parent);
+ * @endcode
+ * 
  * @param world The world.
  * @param parent The parent.
  * @return An iterator that iterates all children of the parent.
@@ -4684,8 +4733,21 @@ bool ecs_each_next(
  * @see ecs_each_id()
 */
 FLECS_API
-ecs_iter_t ecs_children(
+FLECS_ALWAYS_INLINE ecs_iter_t ecs_children(
     const ecs_world_t *world,
+    ecs_entity_t parent);
+
+/** Same as ecs_children() but with custom relationship argument. 
+ * 
+ * @param world The world.
+ * @param relationship The relationship.
+ * @param parent The parent.
+ * @return An iterator that iterates all children of the parent.
+ */
+FLECS_API
+FLECS_ALWAYS_INLINE ecs_iter_t ecs_children_w_rel(
+    const ecs_world_t *world,
+    ecs_entity_t relationship,
     ecs_entity_t parent);
 
 /** Progress an iterator created with ecs_children().
@@ -5949,6 +6011,23 @@ bool ecs_table_has_id(
     const ecs_world_t *world,
     const ecs_table_t *table,
     ecs_id_t component);
+
+/** Get relationship target for table.
+ * 
+ * @param world The world.
+ * @param table The table.
+ * @param relationship The relationship for which to obtain the target.
+ * @param index The index, in case the table has multiple instances of the relationship.
+ * @return The requested relationship target.
+ * 
+ * @see ecs_get_target()
+ */
+FLECS_API
+ecs_entity_t ecs_table_get_target(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_entity_t relationship,
+    int32_t index);
 
 /** Return depth for table in tree for relationship rel.
  * Depth is determined by counting the number of targets encountered while

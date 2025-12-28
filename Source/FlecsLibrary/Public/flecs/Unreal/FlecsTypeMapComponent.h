@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "FlecsScriptClassComponent.h"
 #include "FlecsScriptEnumComponent.h"
 #include "FlecsScriptStructComponent.h"
 #include "Standard/robin_hood.h"
@@ -10,5 +11,6 @@
 struct FFlecsTypeMapComponent final
 {
 	mutable robin_hood::unordered_flat_map<FFlecsScriptStructComponent, flecs::entity_t> ScriptStructMap;
+	mutable robin_hood::unordered_flat_map<FFlecsScriptClassComponent, flecs::entity_t> ScriptClassMap;
 	mutable robin_hood::unordered_flat_map<FFlecsScriptEnumComponent, flecs::entity_t> ScriptEnumMap;
 }; // struct FFlecsTypeMapComponent
